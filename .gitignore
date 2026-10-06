@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dev-dist/
+coverage/
+playwright-report/
+test-results/
+*.log
+.DS_Store
+.env*
+.claude/settings.local.json
+
+# Real lab recordings: personal health data, never commit or deploy (see docs/data-formats.md)
+public/samples/local/*
+!public/samples/local/README.md
