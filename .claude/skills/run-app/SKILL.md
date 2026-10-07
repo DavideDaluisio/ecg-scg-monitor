@@ -1,25 +1,22 @@
 ---
 name: run-app
-description: Start the ECG/SCG monitor dev server and verify it in a real browser with Playwright (screenshot + console errors). Use when asked to run, start, try, or screenshot the app, or to confirm a UI change works.
+description: Start the ECG/SCG monitor dev server and check a UI change in the running app (Chrome). Use after any change to src/ui, src/plot or src/sources, or when the user asks to run, open or screenshot the app.
 ---
 
-# Run and check the app
+# Run the app and check it
 
-1. If `node_modules/` is missing, run `npm install`.
-2. Start the dev server in the background: `npm run dev` (port 5173). Wait until it prints the local URL.
-3. Write a short Playwright script in the scratchpad (not in the repo) that:
-   - opens `http://localhost:5173/`
-   - collects `console` messages of type `error` and `pageerror` events
-   - selects the source requested by the user (default: **Replay → ECG sample**) and presses Start
-   - waits 3 s, then saves a full-page screenshot
-   - checks that the plot canvas changed between two screenshots taken 1 s apart (the signal is moving)
-4. Run it with `npx playwright test` or `node`, then show the screenshot to the user (Read the PNG).
-5. Report:
-   - console errors (or "none")
-   - whether the trace is moving
-   - anything that looks wrong (flat line, wrong scale, axis not in seconds/mV)
-6. Stop the dev server when done, unless the user wants to keep it running.
+1. Start the dev server in the background: `npm run dev` (port 5173). Wait for `Local: http://localhost:5173/ecg-scg-monitor/`.
+2. Open `http://localhost:5173/ecg-scg-monitor/` in Chrome (browser tool if available; otherwise ask the user to open it).
+3. Check, in this order:
+   - The page loads with no errors in the browser console.
+   - Pick a recording (a synthetic one is always available; real ones only if `public/samples/local/` is populated).
+   - Press **Start**: the status badge shows `running` and the trace scrolls.
+   - Timing: 10 s on a stopwatch ≈ 10 s of signal on the X axis.
+   - **Pause** freezes the plot; **Resume** jumps back to live; **Stop** returns to `idle`.
+   - Performance (when the plot changed): Chrome DevTools → Performance, record 5 s, frames stay near 60 fps
+     and the JS heap does not grow steadily.
+4. Take a screenshot if useful for the weekly update and save it under `docs/updates/img/`.
+5. Stop the dev server when done.
+6. Report to the user in Italian: what you checked, what worked, what did not.
 
-Notes:
-- Web Bluetooth cannot be exercised headlessly. For BLE, use the synthetic "packetized" source instead.
-- If Playwright browsers are missing: `npx playwright install chromium`.
+If something fails, fix it or say clearly what is broken. Do not report success without seeing it work.

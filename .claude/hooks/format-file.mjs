@@ -1,24 +1,20 @@
-// PostToolUse hook: format + lint-fix the TS/TSX file Claude just edited.
-// Does nothing until dependencies are installed (before milestone M0 there is no node_modules).
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+// PostToolUse hook (Edit|Write): runs Prettier on the file Claude just edited.
+// Never blocks Claude: formatting errors are ignored (the typecheck hook catches real problems).
+import { execFileSync } from 'node:child_process'
 
-const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
-const file = input?.tool_input?.file_path;
+const FORMATTED = /\.(ts|tsx|js|mjs|json|css|md)$/
 
-if (!file || !/\.(ts|tsx)$/.test(file) || !existsSync(join(projectDir, 'node_modules'))) {
-  process.exit(0);
-}
+let input = ''
+for await (const chunk of process.stdin) input += chunk
 
-const run = (args) => {
-  try {
-    execFileSync('npx', args, { cwd: projectDir, stdio: 'ignore', shell: true });
-  } catch {
-    // Formatting problems must never block the edit. Lint errors show up in `npm run lint`.
+try {
+  const filePath = JSON.parse(input).tool_input?.file_path
+  if (filePath && FORMATTED.test(filePath) && !filePath.includes('node_modules')) {
+    execFileSync('npx', ['prettier', '--write', '--log-level', 'warn', filePath], {
+      stdio: 'ignore',
+      shell: process.platform === 'win32',
+    })
   }
-};
-
-run(['prettier', '--write', JSON.stringify(file)]);
-run(['eslint', '--fix', JSON.stringify(file)]);
+} catch {
+  // ignore: a formatting failure must not interrupt the work
+}

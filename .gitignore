@@ -1,14 +1,32 @@
-node_modules/
-dist/
-dev-dist/
-coverage/
-playwright-report/
-test-results/
+# Logs
+logs
 *.log
-.DS_Store
-.env*
-.claude/settings.local.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Real lab recordings: personal health data, never commit or deploy (see docs/data-formats.md)
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Real lab recordings: personal health data, never committed or deployed
 public/samples/local/*
 !public/samples/local/README.md
+
+# Test output
+test-results
+playwright-report

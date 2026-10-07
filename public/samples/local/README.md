@@ -1,11 +1,10 @@
 # Local recordings (not in git, not deployed)
 
-Real lab recordings are personal health data. They live only on your computer, in this folder.
+Put real lab recordings here for local development (use the skill `import-recording`).
+This folder is git-ignored and removed from `dist/` after every build: real ECG/SCG data is personal health data.
 
-- Everything in this folder except this README is ignored by git (see `.gitignore`).
-- `vite.config.ts` deletes `dist/samples/local/` after every build, so these files never reach GitHub Pages.
-- `manifest.json` here lists the local recordings, with the same fields as `../manifest.json`.
-- Use neutral names (`ecg_subject01.lvm`), never a person's name.
+Expected files (neutral names, no personal names):
+- `ecg_subject01.lvm` – ECG, 3000 Hz, 24 s
+- `scg_subject01.csv` – SCG, 3000 Hz, ~9.3 s (converted from the lab `.xlsx` with `scripts/convert-xlsx.mjs`)
 
-To set up a new machine, copy the files from the lab's private storage (the `Resources/` folder) using the
-`import-recording` skill.
+`manifest.json` in this folder lists them (same format as `public/samples/manifest.json`).

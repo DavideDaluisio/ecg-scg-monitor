@@ -1,22 +1,30 @@
-// Stop hook: run `npm run typecheck` before Claude ends its turn.
-// If it fails, exit code 2 sends the errors back to Claude so it fixes them.
-// Does nothing until dependencies are installed (before milestone M0 there is no node_modules).
-import { execSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+// Stop hook: runs `npm run typecheck` when Claude finishes a turn.
+// If it fails, Claude is asked to fix the errors before stopping (once, to avoid loops).
+import { execSync } from 'node:child_process'
 
-const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
+let input = ''
+for await (const chunk of process.stdin) input += chunk
 
-// Avoid an endless loop: if Claude is already continuing because of this hook, let it stop.
-if (input.stop_hook_active || !existsSync(join(projectDir, 'node_modules'))) {
-  process.exit(0);
+let alreadyRetried = false
+try {
+  alreadyRetried = JSON.parse(input).stop_hook_active === true
+} catch {
+  // no input: treat as a normal stop
 }
 
 try {
-  execSync('npm run typecheck --silent', { cwd: projectDir, stdio: 'pipe' });
-} catch (err) {
-  const out = `${err.stdout ?? ''}${err.stderr ?? ''}`.slice(-4000);
-  process.stderr.write(`TypeScript errors, fix them before finishing:\n${out}`);
-  process.exit(2);
+  execSync('npm run typecheck', {
+    stdio: 'pipe',
+    cwd: process.env.CLAUDE_PROJECT_DIR ?? process.cwd(),
+  })
+} catch (error) {
+  if (!alreadyRetried) {
+    const output = `${error.stdout ?? ''}${error.stderr ?? ''}`.slice(-3000)
+    console.log(
+      JSON.stringify({
+        decision: 'block',
+        reason: `npm run typecheck failed. Fix these TypeScript errors before finishing:\n${output}`,
+      }),
+    )
+  }
 }

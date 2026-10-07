@@ -1,29 +1,26 @@
-import { rmSync } from "node:fs";
-import { resolve } from "node:path";
-import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { rm } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import react from '@vitejs/plugin-react'
+import type { Plugin } from 'vite'
+import { defineConfig } from 'vitest/config'
 
-// Real lab recordings in public/samples/local/ are personal health data.
-// Vite copies everything in public/ into dist/, so we delete that folder after
-// the build. This keeps them out of GitHub Pages even after a local build.
-function removeLocalRecordings(): Plugin {
-  let outDir = "dist";
+// Real recordings in public/samples/local/ are for local development only.
+// Vite copies all of public/ into dist/, so this plugin deletes them after every build.
+function stripLocalSamples(): Plugin {
   return {
-    name: "remove-local-recordings",
-    apply: "build",
-    configResolved(config) {
-      outDir = resolve(config.root, config.build.outDir);
+    name: 'strip-local-samples',
+    apply: 'build',
+    async closeBundle() {
+      await rm(resolve(import.meta.dirname, 'dist/samples/local'), { recursive: true, force: true })
     },
-    closeBundle() {
-      rmSync(resolve(outDir, "samples/local"), {
-        recursive: true,
-        force: true,
-      });
-    },
-  };
+  }
 }
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), removeLocalRecordings()],
-});
+  // GitHub Pages serves the app from https://<user>.github.io/ecg-scg-monitor/
+  base: '/ecg-scg-monitor/',
+  plugins: [react(), stripLocalSamples()],
+  test: {
+    include: ['tests/unit/**/*.test.ts'],
+  },
+})

@@ -1,50 +1,48 @@
 # Data formats
 
 ## Data privacy (read this first)
-Real ECG/SCG recordings are **personal health data**. The GitHub repo and the GitHub Pages site are public
-(a Pages site is public even when the repo is private), so:
-- Real recordings are **never committed and never deployed**. They live only in `public/samples/local/`,
-  which is git-ignored. `vite.config.ts` deletes `dist/samples/local/` after every build.
-- Use neutral ids and file names (`ecg_subject01`), never a person's name. Do not copy names, dates or
-  operators from the original files into the manifest or the docs.
+
+Real ECG/SCG recordings are **personal health data**. The GitHub Pages site is public, so:
+
+- Real recordings are **never committed and never deployed**. They live only in `public/samples/local/`
+  (git-ignored). `vite.config.ts` deletes `dist/samples/local/` after every build, and CI checks it.
+- Use neutral ids and file names (`ecg_subject01`), never a person's name.
 - Tests use **synthetic** fixtures (`tests/fixtures/`, made by `scripts/make-fixtures.mjs`).
-- `public/samples/manifest.json` (deployed) lists only data that is safe to publish. It is empty for now.
-  Publishing a real, anonymized recording needs the team's approval first (see `docs/questions-for-team.md`).
+- On the deployed site, users open recordings from their own disk. The file is read in the browser, never uploaded.
 
 ## Local recordings (`public/samples/local/`, not in git)
-| id | File | Channel | fs | Samples | Duration | Units / range | Simultaneous with |
-|---|---|---|---|---|---|---|---|
-| `ecg_subject01` | `ecg_subject01.lvm` | ECG | 3000 Hz (Δt = 0.000333 s) | 72,000 | 24.0 s | V, DC offset ≈ 1.6 V | – |
-| `scg_subject01` | `scg_subject01.csv` | SCG | 3000 Hz (Δt ≈ 0.000333 s) | 28,000 | 9.33 s | V, ≈ ±0.02 V, zero-centered | – |
 
-The two recordings were **not** made at the same time. They cannot be used to measure ECG→SCG timing.
-The metadata is also in `public/samples/local/manifest.json` (same fields as the public manifest, `file`
-relative to `public/samples/`). The originals are in the lab's private `Resources/` folder, outside this repo.
-On the deployed site, users open their own recordings from disk; the file is read in the browser and never uploaded.
+| id                                     | Channel | fs                        | Samples | Duration | Values                     | Simultaneous with |
+| -------------------------------------- | ------- | ------------------------- | ------- | -------- | -------------------------- | ----------------- |
+| `ecg_subject01` (`.lvm`)               | ECG     | 3000 Hz (Δt = 0.000333 s) | 72,000  | 24.0 s   | V, DC offset ≈ 1.6 V       | –                 |
+| `scg_subject01` (`.csv`, from `.xlsx`) | SCG     | 3000 Hz (Δt = 0.000333 s) | 28,000  | 9.33 s   | V, ≈ ±0.1 V, zero-centered | –                 |
 
-## Test fixtures (`tests/fixtures/`, committed)
-| File | Channel | fs | Samples | Content |
-|---|---|---|---|---|
-| `ecg_synthetic.lvm` | ECG | 3000 Hz | 6,000 (2 s) | fake PQRST at 72 bpm, 1.6 V offset, same LVM header layout (incl. the `Samples 1000` quirk) |
-| `scg_synthetic.csv` | SCG | 3000 Hz | 6,000 (2 s) | fake 30 Hz damped bursts, 50 ms after each R peak, ≈ ±0.02 V |
-
-Regenerate with `node scripts/make-fixtures.mjs` (deterministic).
+The two recordings were **not** made at the same time: they cannot be used to measure ECG→SCG timing.
 
 ## LabVIEW `.lvm` (input)
-- Text file, tab-separated, `.` as the decimal separator.
-- A file header ends with `***End_of_Header***`, then a segment header (Channels, Samples, Date, Time,
+
+- Text, tab-separated, `.` as decimal separator.
+- A file header ends with `***End_of_Header***`. Then a segment header (`Channels`, `Samples`, `Date`, `Time`,
   `Y_Unit_Label`, `X0`, `Delta_X`) ends with another `***End_of_Header***`, followed by the column line
-  `X_Value	Voltage_0	Comment` and the data rows `time<TAB>value`.
-- **Known quirk:** in the lab ECG recording (and in `tests/fixtures/ecg_synthetic.lvm`) the segment header says `Samples 1000`, but the file contains many more rows.
-  The parser must count the rows and **not trust** `Samples`.
-- fs = 1 / `Delta_X`. `0.000333` is a rounded 1/3000, so round fs to the nearest integer Hz.
-- Some LVM files contain multiple segments (several header blocks) or multiple channels. The parser must
-  handle both, or fail with a clear message.
+  `X_Value<TAB>Voltage_0<TAB>Comment` and the data rows `time<TAB>value`.
+- **Known quirk:** the lab ECG file says `Samples 1000` but contains 72,000 rows. Count the rows, do not trust `Samples`.
+- **fs from the time column, not from `Delta_X`:** `0.000333` is a truncated 1/3000, and `1 / 0.000333` = 3003 Hz (wrong).
+  Use `fs = round((n − 1) / (t_last − t_first))` over all rows (= 3000 for the lab files). Same rule for CSV and XLSX.
+- Files with several segments or several channels: fail with a clear message (not supported yet).
 
-## CSV (input and export)
-Input sample files: header `time_s,<channel>_V`, one row per sample, `.` as the decimal separator.
+## CSV (input)
 
-Export format (M5), when **all channels have the same fs**:
+Header `time_s,<channel>_V`, one row per sample, `.` decimal separator. fs = round((n − 1) / (t_last − t_first)).
+
+## XLSX (input)
+
+Read with SheetJS (lazy-loaded). First sheet, first row = header (`Time (s)`, `Voltage (V)`), columns = time (s), value (V).
+`scripts/convert-xlsx.mjs` converts it to the CSV format above for `public/samples/local/`.
+
+## CSV export (M4)
+
+When all channels have the same fs:
+
 ```
 # ecg-scg-monitor export v1
 # start_iso=2026-10-06T15:00:00.000Z fs=3000 source=synthetic
@@ -52,27 +50,22 @@ sample_index,time_s,ecg_V,scg_V,marker
 0,0.000000,1.605213,0.022260,
 1,0.000333,1.601534,0.021660,stand up
 ```
-- `time_s = sample_index / fs` (not wall-clock time).
-- Missing samples are written as empty cells (NaN in memory).
+
+- `time_s = sample_index / fs` (not wall-clock time). Missing samples are empty cells.
 - `marker` is non-empty only on the sample where the marker was placed.
+- When the channels have **different fs**, one CSV per channel (`<session>_ecg.csv`, `<session>_scg.csv`),
+  each with its own `fs`. Never resample: raw stays raw.
 
-When the channels have **different fs** (e.g. ECG 512 Hz, SCG 3000 Hz), the export writes **one CSV per channel**
-(`<session>_ecg.csv`, `<session>_scg.csv`), each with its own `fs` in the header and the columns
-`sample_index,time_s,<channel>_V,marker`. Rows are never resampled or interpolated: raw stays raw.
-`time_s = sample_index / fs` of that file, so the files line up in seconds. LVM export follows the same rule
-(one channel per file when fs differs).
+## Markers (M4)
 
-## Markers
-- Stored as `{ channel, sampleIndex, label }` on the session's **reference channel**: the channel with the highest fs
-  (ECG when the rates are equal). `t = sampleIndex / fs(channel)`, never wall-clock time.
-- On export, a marker is placed in every other channel at `round(t × fs_other)`.
+`{ channel, sampleIndex, label }` on the reference channel (highest fs, ECG if equal). On export, a marker goes to
+`round(t × fs_other)` in the other channels.
 
-## XLSX (input)
-Read with SheetJS (lazy-loaded). First sheet, first two columns = time (s), value (V), first row = header.
+## Test fixtures (`tests/fixtures/`, committed, synthetic)
 
-## In-memory: `SampleBlock`
-See `src/core/CLAUDE.md`. One channel per block, values in volts, `Float32Array`, with that channel's `fs` and
-`firstSampleIndex`. Channels may have different fs (`docs/decisions/0003-per-channel-sample-rate.md`).
+| File                | Channel | fs      | Samples     | Content                                                                            |
+| ------------------- | ------- | ------- | ----------- | ---------------------------------------------------------------------------------- |
+| `ecg_synthetic.lvm` | ECG     | 3000 Hz | 6,000 (2 s) | fake PQRST at 72 bpm, 1.6 V offset, same LVM layout incl. the `Samples 1000` quirk |
+| `scg_synthetic.csv` | SCG     | 3000 Hz | 6,000 (2 s) | fake damped 30 Hz bursts 80 ms after each R peak, ≈ ±0.05 V                        |
 
-## BLE packets
-See `docs/ble-protocol.md`.
+Regenerate with `npm run fixtures` (deterministic).
