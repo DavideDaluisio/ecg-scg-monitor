@@ -22,7 +22,8 @@ The two recordings were **not** made at the same time: they cannot be used to me
 ## Manifests (`public/samples/manifest.json`, `public/samples/local/manifest.json`)
 
 Lists of recordings shown in the app's picker. The public one is deployed and lists only synthetic or approved data;
-the local one is git-ignored. When the local manifest is missing (e.g. on GitHub Pages) the app ignores it.
+the local one is git-ignored and is read only by the dev server (`npm run dev`); production builds never request it.
+When it is missing on the dev server, the app ignores it.
 
 ```json
 {

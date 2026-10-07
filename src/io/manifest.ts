@@ -46,9 +46,17 @@ export function parseManifest(json: unknown, isLocal: boolean): RecordingEntry[]
   return entries
 }
 
-/** Public recordings first, then the local ones (if this computer has them). */
-export async function loadRecordings(samplesUrl: string): Promise<RecordingEntry[]> {
+/**
+ * Public recordings first, then the local ones (if this computer has them).
+ * `includeLocal` is false in production builds: the build deletes samples/local/, so asking for it would only
+ * log a 404 error in the browser console.
+ */
+export async function loadRecordings(
+  samplesUrl: string,
+  includeLocal: boolean,
+): Promise<RecordingEntry[]> {
   const publicEntries = parseManifest(await fetchJson(`${samplesUrl}manifest.json`), false)
+  if (!includeLocal) return publicEntries
   const localEntries = parseManifest(await fetchJson(`${samplesUrl}local/manifest.json`), true)
   return [...publicEntries, ...localEntries]
 }

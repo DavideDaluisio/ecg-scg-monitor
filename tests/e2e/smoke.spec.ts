@@ -20,10 +20,14 @@ test('replays the synthetic ECG demo', async ({ page }) => {
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text())
   })
+  const requests: string[] = []
+  page.on('request', (request) => requests.push(request.url()))
 
   await page.goto('./')
   const picker = page.getByRole('combobox', { name: 'Recording' })
   await expect(picker).toHaveValue('ecg_synthetic_demo')
+  // The production build never asks for real recordings (samples/local/ is not deployed).
+  expect(requests.filter((url) => url.includes('/samples/local/'))).toEqual([])
 
   await page.getByRole('button', { name: 'Start' }).click()
   await expect(page.getByTestId('status-badge')).toHaveText('running')
