@@ -7,7 +7,7 @@ Model: Figure 1F of Bhattacharya et al., _Adv. Electron. Mater._ 2023 (one SCG c
 - Until the patch and its Bluetooth module (BL653µ) are ready, the app replays lab recordings and synthetic signals.
 - iPhone is not supported (Safari has no Web Bluetooth).
 
-**Live demo:** https://&lt;github-user&gt;.github.io/ecg-scg-monitor/ (after the first deploy)
+**Live demo:** https://davidedaluisio.github.io/ecg-scg-monitor/
 
 ## Run locally
 

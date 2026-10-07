@@ -30,7 +30,7 @@ UI (React + zustand): source picker, start/stop, pause display, window length, m
 
 | Source            | Milestone | Channels             | Notes                                                               |
 | ----------------- | --------- | -------------------- | ------------------------------------------------------------------- |
-| `ReplaySource`    | M1–M2     | one file per channel | real speed, loops, files from `public/samples/` or opened from disk |
+| `ReplaySource`    | M1–M2     | one file per channel | real speed, loops, files from `public/samples/` or opened from disk. Max 1 s per tick: after a background tab it continues from where it was (no burst, index stays continuous) |
 | `SyntheticSource` | M3        | ecg + scg            | known HR and R→AO delay, seeded, used to verify alignment           |
 | `BleSource`       | M5        | ecg + scg            | Web Bluetooth + `src/ble/decoder.ts`                                |
 
@@ -44,4 +44,18 @@ UI (React + zustand): source picker, start/stop, pause display, window length, m
 | `src/plot`            | uPlot wrapper, decimation, render loop | `src/plot/CLAUDE.md`                |
 | `src/recording`       | IndexedDB recorder, markers            | –                                   |
 | `src/ble`             | Web Bluetooth, decoder (M5)            | `src/ble/CLAUDE.md` (created in M5) |
-| `src/state`, `src/ui` | zustand store, React components        | –                                   |
+| `src/state`           | `store.ts`: zustand UI state (status, picker, pause, window). `session.ts`: the running source + one ring buffer per channel (plain module, no React) | – |
+| `src/ui`              | React components; `LivePlotView` mounts a `LivePlot` once and registers it in the render loop | – |
+
+## Live view (M1)
+
+```
+ReplaySource ──SampleBlock──▶ session.ts: RingBuffer.push()
+                                   │
+renderLoop.ts (one rAF) ──▶ LivePlot.draw(): copyRange(last W s) → decimateMinMax (2 points/pixel, V → mV)
+                                             → updateYRange (autoscale) → uPlot setData/setScale
+```
+
+- X window = `[max(0, tEnd − W), +W]`: the trace fills 0…W s, then scrolls. W = 5 or 10 s.
+- Pause skips `draw()` only; the source and the ring buffer keep running. Resume shows the live window again.
+- `draw()` returns early when no new sample arrived (the replay emits every ~20 ms, the screen refreshes every ~16 ms).

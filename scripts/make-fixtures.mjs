@@ -1,9 +1,12 @@
-// Generates the synthetic test fixtures in tests/fixtures/ (deterministic, no real patient data).
+// Generates the synthetic test fixtures in tests/fixtures/ and the public demo recording
+// public/samples/ecg_synthetic_demo.lvm (deterministic, no real patient data).
 // Usage: npm run fixtures
 import { mkdirSync, writeFileSync } from 'node:fs'
 
 const FS = 3000 // Hz, same as the lab recordings
 const DURATION_S = 2
+// 10 s = exactly 12 beats at 72 bpm, so the demo loops without a jump.
+const DEMO_DURATION_S = 10
 const HEART_RATE_BPM = 72
 const R_TO_AO_S = 0.08 // delay between the ECG R peak and the SCG aortic-opening burst
 const N = FS * DURATION_S
@@ -23,15 +26,15 @@ function gaussian(x, width) {
   return Math.exp(-0.5 * (x / width) ** 2)
 }
 
-function rPeakTimes() {
+function rPeakTimes(durationS = DURATION_S) {
   const times = []
-  for (let t = FIRST_R_S; t < DURATION_S + 1; t += BEAT_S) times.push(t)
+  for (let t = FIRST_R_S; t < durationS + 1; t += BEAT_S) times.push(t)
   return times
 }
 
-function ecgAt(t) {
+function ecgAt(t, durationS = DURATION_S) {
   let value = 1.6 // DC offset, like the lab ECG recording
-  for (const r of rPeakTimes()) {
+  for (const r of rPeakTimes(durationS)) {
     for (const wave of PQRST) value += wave.amplitude * gaussian(t - r - wave.offsetS, wave.widthS)
   }
   return value
@@ -91,3 +94,13 @@ mkdirSync(outDir, { recursive: true })
 writeFileSync(new URL('ecg_synthetic.lvm', outDir), [...lvmHeader, ...ecgRows].join('\n') + '\n')
 writeFileSync(new URL('scg_synthetic.csv', outDir), scgRows.join('\n') + '\n')
 console.log(`Wrote ${N} ECG and ${N} SCG samples at ${FS} Hz to tests/fixtures/`)
+
+// Public demo: the only recording on the deployed site (synthetic, safe to publish).
+const demoN = FS * DEMO_DURATION_S
+const demoRows = []
+for (let i = 0; i < demoN; i++) demoRows.push(`${time(i)}\t${ecgAt(i / FS, DEMO_DURATION_S).toFixed(6)}`)
+writeFileSync(
+  new URL('../public/samples/ecg_synthetic_demo.lvm', import.meta.url),
+  [...lvmHeader, ...demoRows].join('\n') + '\n',
+)
+console.log(`Wrote ${demoN} ECG samples at ${FS} Hz to public/samples/ecg_synthetic_demo.lvm`)

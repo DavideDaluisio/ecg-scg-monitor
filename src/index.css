@@ -140,3 +140,54 @@ select:disabled {
 .placeholder {
   color: var(--muted);
 }
+
+/* The uPlot chart fills the plot area (LivePlot reads its size). */
+.plot-live {
+  display: block;
+  overflow: hidden;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.paused-note {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.status-connecting,
+.status-ended {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.file-button {
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text) !important;
+}
+
+.file-button.disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.error-message {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.source-info {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}

@@ -4,8 +4,8 @@ Order requested by the supervisor: ECG first, then SCG, then both together. Stat
 
 | #   | Milestone                          | Status | Done when                                                                                 |
 | --- | ---------------------------------- | ------ | ----------------------------------------------------------------------------------------- |
-| M0  | Scaffold                           | wip    | GitHub Pages shows the app shell, CI green                                                |
-| M1  | ECG live (replay)                  | todo   | 24 s of file = 24 s on screen, smooth 60 fps, tests green, e2e smoke ok                   |
+| M0  | Scaffold                           | done   | GitHub Pages shows the app shell, CI green                                                |
+| M1  | ECG live (replay)                  | done   | 24 s of file = 24 s on screen, smooth 60 fps, tests green, e2e smoke ok                   |
 | M2  | SCG live                           | todo   | SCG file scrolls like the ECG, parser tests green                                         |
 | M3  | ECG + SCG together (paper Fig. 1F) | todo   | synthetic R→AO delay read on the plot matches the configured one (±1 sample)              |
 | M4  | Recording, markers, export         | todo   | 5-min export re-read in Python with samples and markers at the right index                |
@@ -21,17 +21,17 @@ Order requested by the supervisor: ECG first, then SCG, then both together. Stat
 - [x] Local recordings in `public/samples/local/` (git-ignored, neutral names)
 - [x] App shell + e2e smoke test
 - [x] CI (`ci.yml`) and Pages deploy (`deploy.yml`) workflows
-- [ ] Create the GitHub repo, push, enable Pages (Settings → Pages → Source: GitHub Actions)
+- [x] Create the GitHub repo, push, enable Pages (Settings → Pages → Source: GitHub Actions)
 
 ## M1 – ECG live (replay)
 
-- [ ] `src/core`: `types.ts`, `time.ts`, `ringBuffer.ts` (+ tests, incl. wrap-around)
-- [ ] `src/io/lvm.ts` parser (+ tests on `tests/fixtures/ecg_synthetic.lvm`: 6,000 samples, fs 3000, `Samples` quirk)
-- [ ] `ReplaySource` with drift-compensated pacing and looping (+ fake-timer tests)
-- [ ] `src/plot`: uPlot panel, min/max decimation (+ tests), render loop, autoscale Y, mV axis
-- [ ] UI: recording picker (local samples or open file from disk), Start/Stop, Pause display, status badge, window 5/10 s
-- [ ] e2e: start replay of the synthetic file, canvas visible, status `running`
-- [ ] Screenshot + weekly update for the meeting
+- [x] `src/core`: `types.ts`, `time.ts`, `ringBuffer.ts` (+ tests, incl. wrap-around)
+- [x] `src/io/lvm.ts` parser (+ tests on `tests/fixtures/ecg_synthetic.lvm`: 6,000 samples, fs 3000, `Samples` quirk)
+- [x] `ReplaySource` with drift-compensated pacing and looping (+ fake-timer tests)
+- [x] `src/plot`: uPlot panel, min/max decimation (+ tests), render loop, autoscale Y, mV axis
+- [x] UI: recording picker (local samples or open file from disk), Start/Stop, Pause display, status badge, window 5/10 s
+- [x] e2e: start replay of the synthetic file, canvas visible, status `running`
+- [x] Screenshot + weekly update for the meeting
 
 ## M2 – SCG live
 

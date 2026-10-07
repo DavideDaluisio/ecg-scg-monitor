@@ -1,1 +1,13 @@
-{ "recordings": [] }
+{
+  "recordings": [
+    {
+      "id": "ecg_synthetic_demo",
+      "file": "ecg_synthetic_demo.lvm",
+      "channel": "ecg",
+      "fs": 3000,
+      "samples": 30000,
+      "durationS": 10,
+      "simultaneousWith": null
+    }
+  ]
+}

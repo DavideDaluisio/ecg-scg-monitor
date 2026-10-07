@@ -50,8 +50,12 @@ Time helpers (`time.ts`): `sampleIndexToSeconds(index, fs)` = `index / fs`,
 - **Index 0 of every channel is the same instant** (session start).
 - A channel's `fs` never changes during a session. A different `fs` means a new session.
 - Values are stored in **volts**. Conversion to mV happens only at display time.
-- `RingBuffer` is per channel and preallocated (default 30 s × fs). `push()` must not allocate, must handle
-  wrap-around, and must let the caller read the last N samples into a caller-provided array.
+- `RingBuffer` (`ringBuffer.ts`) is per channel and preallocated (30 s × fs in `src/state/session.ts`).
+  `push()` and `copyRange()` must not allocate (no `subarray()` either). API:
+  - `push(firstSampleIndex, samples)`: writes a block with wrap-around. A gap before `firstSampleIndex` is filled
+    with `NaN`; samples already written (overlap) are ignored; a block longer than the capacity keeps its tail.
+  - `endIndex` (one past the newest sample) and `startIndex` (oldest sample still held).
+  - `copyRange(startIndex, out)`: fills the caller's array; samples too old or not written yet become `NaN`.
 - Missing samples are written as `NaN`, never skipped, so the index stays continuous.
 
 ## Source lifecycle
