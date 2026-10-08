@@ -59,7 +59,10 @@ export class RingBuffer {
     const oldest = this.startIndex
     for (let i = 0; i < out.length; i++) {
       const index = startIndex + i
-      out[i] = index >= oldest && index < this.nextIndex ? this.data[index % this.capacity] : NaN
+      // if/else on purpose: V8 boxes the result of `cond ? float : NaN` into a new heap number on every sample
+      // (≈ 1 MB of garbage per frame with two panels).
+      if (index >= oldest && index < this.nextIndex) out[i] = this.data[index % this.capacity]
+      else out[i] = NaN
     }
   }
 
