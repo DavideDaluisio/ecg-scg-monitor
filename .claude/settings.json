@@ -32,16 +32,6 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-file.mjs\""
           }
         ]
-      },
-      {
-        "matcher": "Bash",
-        "if": "Bash(git commit *)",
-        "hooks": [
-          {
-            "type": "prompt",
-            "prompt": "The user just ran 'git commit'. Extract the commit message from $ARGUMENTS (look in tool_input.command for the -m flag or message). Check if it contains 'Complete M' or 'completed milestone' followed by a number. If found, extract the milestone number and respond with: {\"systemMessage\": \"Milestone completed! You can tag this version with: git tag M<number>. Would you like to run this command now?\"}. If no milestone pattern found, respond with an empty response."
-          }
-        ]
       }
     ],
     "Stop": [
