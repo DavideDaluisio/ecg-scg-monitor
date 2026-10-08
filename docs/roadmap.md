@@ -6,7 +6,7 @@ Order requested by the supervisor: ECG first, then SCG, then both together. Stat
 | --- | ---------------------------------- | ------ | ----------------------------------------------------------------------------------------- |
 | M0  | Scaffold                           | done   | GitHub Pages shows the app shell, CI green                                                |
 | M1  | ECG live (replay)                  | done   | 24 s of file = 24 s on screen, smooth 60 fps, tests green, e2e smoke ok                   |
-| M2  | SCG live                           | todo   | SCG file scrolls like the ECG, parser tests green                                         |
+| M2  | SCG live                           | done   | SCG file scrolls like the ECG, parser tests green                                         |
 | M3  | ECG + SCG together (paper Fig. 1F) | todo   | synthetic R→AO delay read on the plot matches the configured one (±1 sample)              |
 | M4  | Recording, markers, export         | todo   | 5-min export re-read in Python with samples and markers at the right index                |
 | M5  | BLE (BL653µ)                       | todo   | packetized-synthetic decoder tests green; with hardware: 10 min stable, < 1 % packet loss |
@@ -35,8 +35,9 @@ Order requested by the supervisor: ECG first, then SCG, then both together. Stat
 
 ## M2 – SCG live
 
-- [ ] `src/io/csv.ts` + lazy `src/io/xlsx.ts` (+ tests on `scg_synthetic.csv`)
-- [ ] Generic channel panel component, SCG panel
+- [x] `src/io/csv.ts` + lazy `src/io/xlsx.ts` (+ tests on `scg_synthetic.csv`)
+- [x] Generic channel panel component, SCG panel
+- [x] Public synthetic SCG demo (`scg_synthetic_demo.csv`), "Open ECG file…" / "Open SCG file…", e2e
 
 ## M3 – ECG + SCG together
 

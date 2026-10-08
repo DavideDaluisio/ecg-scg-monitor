@@ -8,6 +8,15 @@
       "samples": 30000,
       "durationS": 10,
       "simultaneousWith": null
+    },
+    {
+      "id": "scg_synthetic_demo",
+      "file": "scg_synthetic_demo.csv",
+      "channel": "scg",
+      "fs": 3000,
+      "samples": 30000,
+      "durationS": 10,
+      "simultaneousWith": null
     }
   ]
 }

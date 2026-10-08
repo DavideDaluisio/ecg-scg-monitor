@@ -1,10 +1,6 @@
 // Parser for LabVIEW .lvm text files with one segment and one channel (format: docs/data-formats.md).
+import type { ParsedSignal } from './parsedSignal.ts'
 import { sampleRateFromTimes } from './sampleRate.ts'
-
-export interface ParsedSignal {
-  fs: number // Hz, computed from the time column
-  samples: Float32Array // volts
-}
 
 const END_OF_HEADER = '***End_of_Header***'
 

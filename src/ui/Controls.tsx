@@ -17,7 +17,7 @@ export function Controls() {
     const { recordings, diskFile } = useAppStore.getState()
     setPaused(false)
     if (selectedId === DISK_FILE && diskFile !== null) {
-      void startReplayFromFile(diskFile)
+      void startReplayFromFile(diskFile.file, diskFile.channel)
       return
     }
     const entry = recordings.find((r) => r.id === selectedId)

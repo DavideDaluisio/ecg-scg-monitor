@@ -1,5 +1,5 @@
-// Generates the synthetic test fixtures in tests/fixtures/ and the public demo recording
-// public/samples/ecg_synthetic_demo.lvm (deterministic, no real patient data).
+// Generates the synthetic test fixtures in tests/fixtures/ and the public demo recordings
+// public/samples/ecg_synthetic_demo.lvm and scg_synthetic_demo.csv (deterministic, no real patient data).
 // Usage: npm run fixtures
 import { mkdirSync, writeFileSync } from 'node:fs'
 
@@ -41,9 +41,9 @@ function ecgAt(t, durationS = DURATION_S) {
 }
 
 // Damped 30 Hz bursts: one at aortic opening (AO), a smaller one at aortic closing (AC).
-function scgAt(t) {
+function scgAt(t, durationS = DURATION_S) {
   let value = 0
-  for (const r of rPeakTimes()) {
+  for (const r of rPeakTimes(durationS)) {
     for (const burst of [
       { startS: r + R_TO_AO_S, amplitude: 0.05 },
       { startS: r + 0.35, amplitude: 0.02 },
@@ -95,12 +95,20 @@ writeFileSync(new URL('ecg_synthetic.lvm', outDir), [...lvmHeader, ...ecgRows].j
 writeFileSync(new URL('scg_synthetic.csv', outDir), scgRows.join('\n') + '\n')
 console.log(`Wrote ${N} ECG and ${N} SCG samples at ${FS} Hz to tests/fixtures/`)
 
-// Public demo: the only recording on the deployed site (synthetic, safe to publish).
+// Public demos: the only recordings on the deployed site (synthetic, safe to publish).
 const demoN = FS * DEMO_DURATION_S
 const demoRows = []
-for (let i = 0; i < demoN; i++) demoRows.push(`${time(i)}\t${ecgAt(i / FS, DEMO_DURATION_S).toFixed(6)}`)
+const scgDemoRows = ['time_s,scg_V']
+for (let i = 0; i < demoN; i++) {
+  demoRows.push(`${time(i)}\t${ecgAt(i / FS, DEMO_DURATION_S).toFixed(6)}`)
+  scgDemoRows.push(`${time(i)},${scgAt(i / FS, DEMO_DURATION_S).toFixed(6)}`)
+}
 writeFileSync(
   new URL('../public/samples/ecg_synthetic_demo.lvm', import.meta.url),
   [...lvmHeader, ...demoRows].join('\n') + '\n',
 )
-console.log(`Wrote ${demoN} ECG samples at ${FS} Hz to public/samples/ecg_synthetic_demo.lvm`)
+writeFileSync(
+  new URL('../public/samples/scg_synthetic_demo.csv', import.meta.url),
+  scgDemoRows.join('\n') + '\n',
+)
+console.log(`Wrote ${demoN} ECG and ${demoN} SCG samples at ${FS} Hz to public/samples/ (demos)`)

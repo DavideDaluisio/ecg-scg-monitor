@@ -5,7 +5,8 @@ import { ChannelPanel } from './ui/ChannelPanel.tsx'
 import { Controls } from './ui/Controls.tsx'
 import { StatusBadge } from './ui/StatusBadge.tsx'
 
-// M1: the ECG replays live. SCG arrives in M2; see docs/roadmap.md.
+// M2: one ECG or SCG recording replays live in the panel of its channel. Both together arrive in M3
+// (docs/roadmap.md).
 function App() {
   const status = useAppStore((s) => s.status)
   const sourceInfo = useAppStore((s) => s.sourceInfo)
@@ -35,14 +36,8 @@ function App() {
       {sourceInfo !== '' && <p className="source-info">{sourceInfo}</p>}
 
       <main className="panels">
-        <ChannelPanel title="ECG" unit="mV" channel="ecg" live />
-        <ChannelPanel
-          title="SCG"
-          unit="mV"
-          channel="scg"
-          live={false}
-          placeholder="SCG arrives in M2"
-        />
+        <ChannelPanel channel="ecg" />
+        <ChannelPanel channel="scg" />
       </main>
     </div>
   )
