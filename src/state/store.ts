@@ -2,6 +2,7 @@
 import { create } from 'zustand'
 import type { ChannelId, SourceStatus } from '../core/types.ts'
 import type { RecordingEntry } from '../io/manifest.ts'
+import type { SavedSession } from '../recording/types.ts'
 
 export type WindowSeconds = 5 | 10
 
@@ -29,6 +30,13 @@ export type ReplayInput =
   | { kind: 'entry'; channel: ChannelId; entry: RecordingEntry }
   | { kind: 'file'; channel: ChannelId; file: File }
 
+/** The last marker placed, shown as feedback next to the marker button. */
+export interface LastMarker {
+  label: string
+  sampleIndex: number // on the reference channel
+  timeS: number
+}
+
 interface AppState {
   recordings: RecordingEntry[]
   sourceKind: SourceKind
@@ -45,6 +53,11 @@ interface AppState {
   notSimultaneous: boolean
   paused: boolean // display only: acquisition keeps running
   windowSeconds: WindowSeconds
+  // Name of the saved session being recorded, null when not recording.
+  recordingName: string | null
+  lastMarker: LastMarker | null
+  savedSessions: SavedSession[] // newest first
+  storageError: string // recording, export or delete failed
 
   setRecordings: (recordings: RecordingEntry[]) => void
   setSourceKind: (kind: SourceKind) => void
@@ -57,6 +70,10 @@ interface AppState {
   setNotSimultaneous: (notSimultaneous: boolean) => void
   setPaused: (paused: boolean) => void
   setWindowSeconds: (seconds: WindowSeconds) => void
+  setRecordingName: (name: string | null) => void
+  setLastMarker: (marker: LastMarker | null) => void
+  setSavedSessions: (sessions: SavedSession[]) => void
+  setStorageError: (message: string) => void
 }
 
 export const useAppStore = create<AppState>()((set) => ({
@@ -71,6 +88,10 @@ export const useAppStore = create<AppState>()((set) => ({
   notSimultaneous: false,
   paused: false,
   windowSeconds: 10,
+  recordingName: null,
+  lastMarker: null,
+  savedSessions: [],
+  storageError: '',
 
   setRecordings: (recordings) =>
     set((state) => ({
@@ -96,6 +117,10 @@ export const useAppStore = create<AppState>()((set) => ({
   setNotSimultaneous: (notSimultaneous) => set({ notSimultaneous }),
   setPaused: (paused) => set({ paused }),
   setWindowSeconds: (windowSeconds) => set({ windowSeconds }),
+  setRecordingName: (recordingName) => set({ recordingName }),
+  setLastMarker: (lastMarker) => set({ lastMarker }),
+  setSavedSessions: (savedSessions) => set({ savedSessions }),
+  setStorageError: (storageError) => set({ storageError }),
 }))
 
 // Keeps a channel's choice if it still exists, otherwise picks the first recording of that channel (or none).

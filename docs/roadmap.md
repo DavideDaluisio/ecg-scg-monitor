@@ -8,7 +8,7 @@ Order requested by the supervisor: ECG first, then SCG, then both together. Stat
 | M1  | ECG live (replay)                  | done   | 24 s of file = 24 s on screen, smooth 60 fps, tests green, e2e smoke ok                   |
 | M2  | SCG live                           | done   | SCG file scrolls like the ECG, parser tests green                                         |
 | M3  | ECG + SCG together (paper Fig. 1F) | done   | synthetic R→AO delay read on the plot matches the configured one (±1 sample)              |
-| M4  | Recording, markers, export         | todo   | 5-min export re-read in Python with samples and markers at the right index                |
+| M4  | Recording, markers, export         | done   | 5-min export re-read in Python with samples and markers at the right index                |
 | M5  | BLE (BL653µ)                       | todo   | packetized-synthetic decoder tests green; with hardware: 10 min stable, < 1 % packet loss |
 
 ## M0 – Scaffold
@@ -49,9 +49,11 @@ Order requested by the supervisor: ECG first, then SCG, then both together. Stat
 
 ## M4 – Recording, markers, export
 
-- [ ] IndexedDB recorder (raw chunks), session list, delete
-- [ ] Marker button (preset labels + free text), vertical lines on the plot
-- [ ] CSV export (one file per channel if fs differ) + Python check script in `scripts/`
+- [x] IndexedDB recorder (raw 1-s chunks, Record / Stop recording), saved-session list, delete
+- [x] Marker button (preset labels + free text, only while recording), vertical lines on the plot
+- [x] CSV export (one file per channel if fs differ, lossless values) + `scripts/check_export.py`
+- [x] `tests/unit/recordingPipeline.test.ts` + e2e (record → marker → export → delete)
+- [x] 5-min exports (ECG 3000 + SCG 3000 Hz, ECG 500 + SCG 3000 Hz) re-read in Python: samples and markers OK
 
 ## M5 – BLE
 
@@ -59,4 +61,6 @@ Order requested by the supervisor: ECG first, then SCG, then both together. Stat
 - [ ] `src/ble/CLAUDE.md`, skill `ble-protocol`, agent `ble-integration-reviewer`
 - [ ] Decoder + test encoder + packetized synthetic mode
 - [ ] `BleSource`: connect, notify, lost packets → NaN, reconnect, link-quality indicator
+- [ ] Recorder: a long gap (BLE dropout) skips whole NaN chunks instead of writing them sample by sample, with a
+      sanity limit on index jumps (like `RingBuffer.writeNaN`)
 - [ ] Hardware test with the BL653µ dev kit

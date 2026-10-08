@@ -20,14 +20,15 @@ Runs in Chrome (desktop and Android) because M5 needs Web Bluetooth. iPhone is n
 
 ## Commands
 
-| Command                              | What it does                                                   |
-| ------------------------------------ | -------------------------------------------------------------- |
-| `npm run dev`                        | Dev server on http://localhost:5173/ecg-scg-monitor/           |
-| `npm test`                           | Vitest unit tests (`tests/unit/`)                              |
-| `npm run e2e`                        | Playwright smoke tests (builds and serves on port 4173)        |
-| `npm run lint` / `npm run typecheck` | oxlint / `tsc -b`                                              |
-| `npm run build`                      | Production build into `dist/` (deployed to GitHub Pages by CI) |
-| `npm run fixtures`                   | Regenerates the synthetic test fixtures in `tests/fixtures/`   |
+| Command                                | What it does                                                     |
+| -------------------------------------- | ---------------------------------------------------------------- |
+| `npm run dev`                          | Dev server on http://localhost:5173/ecg-scg-monitor/             |
+| `npm test`                             | Vitest unit tests (`tests/unit/`)                                |
+| `npm run e2e`                          | Playwright smoke tests (builds and serves on port 4173)          |
+| `npm run lint` / `npm run typecheck`   | oxlint / `tsc -b`                                                |
+| `npm run build`                        | Production build into `dist/` (deployed to GitHub Pages by CI)   |
+| `npm run fixtures`                     | Regenerates the synthetic test fixtures in `tests/fixtures/`     |
+| `python scripts/check_export.py <csv>` | Checks a CSV export (indices, markers, synthetic peak positions) |
 
 ## Folder map
 
@@ -35,11 +36,11 @@ Runs in Chrome (desktop and Android) because M5 needs Web Bluetooth. iPhone is n
 - `src/io/` – parsers (LVM, CSV, XLSX) and CSV export.
 - `src/sources/` – `ReplaySource`, `SyntheticSource`, later `BleSource`.
 - `src/plot/` – uPlot wrapper, min/max decimation, render loop.
-- `src/recording/` – IndexedDB recorder and markers (M4).
+- `src/recording/` – IndexedDB recorder, saved sessions and markers (M4).
 - `src/ble/` – Web Bluetooth connection and packet decoder (M5).
 - `src/state/`, `src/ui/` – zustand store and React components.
 - `public/samples/` – recordings for the replay source. `local/` is git-ignored (see Data privacy).
-- `scripts/` – Node scripts (fixtures, xlsx → csv conversion).
+- `scripts/` – Node scripts (fixtures, xlsx → csv conversion) and `check_export.py` (Python, standard library).
 - `tests/` – `unit/`, `fixtures/` (synthetic, committed), `e2e/`.
 - `docs/` – architecture, data formats, BLE protocol, roadmap, open questions, weekly updates.
 

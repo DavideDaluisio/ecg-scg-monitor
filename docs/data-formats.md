@@ -99,27 +99,74 @@ opened. Parser: `src/io/xlsx.ts`.
 
 `scripts/convert-xlsx.mjs` converts an `.xlsx` to the CSV format above for `public/samples/local/`.
 
-## CSV export (M4)
+## CSV export (v1)
 
-When all channels have the same fs:
+Made by `src/io/csvExport.ts` from a saved session (button **Export CSV** in "Saved sessions"). UTF-8, LF line
+endings, `,` separator, `.` decimal separator. When all channels have the same fs, one file `<session>.csv`:
 
 ```
 # ecg-scg-monitor export v1
-# start_iso=2026-10-06T15:00:00.000Z fs=3000 source=synthetic
+# session=session_2026-10-08_15-04-05
+# start_iso=2026-10-08T13:03:58.120Z
+# recorded_at_iso=2026-10-08T13:04:05.210Z
+# fs=3000
+# source=synthetic
+# description=Synthetic ECG + SCG · 72 bpm · R→AO 80 ms · ECG 3000 Hz · SCG 3000 Hz
+# synthetic_heart_rate_bpm=72
+# synthetic_r_to_ao_ms=80
+# synthetic_noise=false
 sample_index,time_s,ecg_V,scg_V,marker
-0,0.000000,1.605213,0.022260,
-1,0.000333,1.601534,0.021660,stand up
+21270,7.090000,0.00017589612,-6.5644135e-12,
+21271,7.090333,0.00017853011,-7.0168e-12,stand up
 ```
 
-- `time_s = sample_index / fs` (not wall-clock time). Missing samples are empty cells.
-- `marker` is non-empty only on the sample where the marker was placed.
-- When the channels have **different fs**, one CSV per channel (`<session>_ecg.csv`, `<session>_scg.csv`),
-  each with its own `fs`. Never resample: raw stays raw.
+- **Header:** the first line is always `# ecg-scg-monitor export v1`; then one `# key=value` per line.
+  `start_iso` = wall-clock time of sample index 0 (when Start was pressed), `recorded_at_iso` = when Record was
+  pressed (both informative, ± tens of ms). `source` is `replay` or `synthetic`; a synthetic session adds its
+  settings (`synthetic_*`), used by `scripts/check_export.py`.
+- **`sample_index` is the live session's index** (from Start), not re-based to 0: a recording started 7.09 s after
+  Start begins at index 21270. `time_s = sample_index / fs` (seconds since Start, rounded to 1 µs; use
+  `sample_index / fs` for the exact value). Each channel starts recording at its own next sample, so channels may
+  start a few samples apart: those cells are empty.
+- **Values** in volts, written with the shortest decimal that reads back to exactly the same Float32 (lossless:
+  raw is sacred), e.g. `1.605213`, `0.02226`, `-6.5644135e-12`. **Missing samples are empty cells**, never skipped.
+- **`marker`** is non-empty only on the marked sample. Several markers on one sample share the cell (`rest | movement`).
+  A label containing `,` `"` or `#` is quoted (`"rest, sitting"`, quotes doubled). Rows cover every sample and every
+  marker.
+- When the channels have **different fs**: one file per channel, `<session>_ecg.csv` and `<session>_scg.csv`, each
+  with its own `fs` and `sample_index`. Never resampled. The same instant is `sample_index / fs` in both.
+- Chrome may ask once to allow the two downloads.
+- Excel opens at most 1,048,576 rows (≈ 5.8 min at 3 kHz) and cuts longer files: use Python, pandas or MATLAB.
+- The file is built 5,000 rows at a time, each part stored in its own Blob, with a pause between parts: exporting
+  while a source runs does not freeze the plots or stop acquisition (≈ 2 s for 5 min on a laptop).
 
-## Markers (M4)
+Reading it: `pandas.read_csv(path, comment='#')` (a quoted `#` in a label is kept), or Python's `csv` module
+skipping the lines that start with `#`. Check an export with `python scripts/check_export.py <file.csv> [<file2.csv>]`
+(standard library only): contiguous `sample_index`, `time_s`, missing samples, markers (and their agreement
+between two files), and for a synthetic session without noise every R and AO peak position.
 
-`{ channel, sampleIndex, label }` on the reference channel (highest fs, ECG if equal). On export, a marker goes to
-`round(t × fs_other)` in the other channels.
+## Markers
+
+`{ channel, sampleIndex, label }`, placed only while recording, on the **reference channel** (highest fs, ECG if
+equal), on the newest sample received when **Add marker** is clicked (never before the recording start). The app
+shows `Marker "stand up" at 7.0903 s (sample 21271)`: the same index is in the export. In a file with another fs,
+the marker goes to `round(t × fs)` with `t = sampleIndex / fs_reference`. Labels: a preset (placeholder list, see
+Q8 in `docs/questions-for-team.md`) or free text; line breaks are removed; empty = `marker`.
+
+## Saved sessions (IndexedDB, in the browser)
+
+Database `ecg-scg-monitor` (version 1), managed by `src/recording/db.ts`. It lives only in the user's browser
+(personal health data never leaves the computer unless exported).
+
+| Store      | Key                                      | Value                                                                                                                                                                                                                 |
+| ---------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessions` | `id` (auto-increment)                    | `SavedSession`: `name` (`session_YYYY-MM-DD_HH-MM-SS`, local time), `startIso`, `recordedAtIso`, `source`, `description`, `settings`, `channels` (`id`, `fs`, `firstSampleIndex`, `sampleCount`), `markers`, `status` |
+| `chunks`   | `[sessionId, channel, firstSampleIndex]` | `SampleChunk`: `samples` = `Float32Array` of 1 s (the last chunk may be shorter), volts, `NaN` = missing                                                                                                              |
+
+- A chunk and the updated session (sample counts) are written in one transaction. A session whose `status` is still
+  `recording` after its recording ended was interrupted (tab closed): its stored chunks are still exported.
+- Size: 4 bytes per sample, ≈ 86 MB per hour for 2 channels at 3 kHz. The app asks the browser to keep the data
+  (`navigator.storage.persist()`); delete exported sessions to free space.
 
 ## Test fixtures (`tests/fixtures/`, committed, synthetic)
 

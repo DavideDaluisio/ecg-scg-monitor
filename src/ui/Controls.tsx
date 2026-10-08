@@ -1,8 +1,9 @@
 import { startReplay, startSynthetic, stopSession } from '../state/session.ts'
 import { getReplayInputs, useAppStore, type WindowSeconds } from '../state/store.ts'
+import { RecordControls } from './RecordControls.tsx'
 import { SourcePicker } from './SourcePicker.tsx'
 
-// Source choice, Start / Pause / Stop and the length of the visible window.
+// Source choice, Start / Pause / Stop, the length of the visible window, then recording and markers.
 export function Controls() {
   const state = useAppStore((s) => s.status.state)
   const paused = useAppStore((s) => s.paused)
@@ -54,6 +55,7 @@ export function Controls() {
           </select>
         </label>
       </section>
+      <RecordControls />
     </>
   )
 }

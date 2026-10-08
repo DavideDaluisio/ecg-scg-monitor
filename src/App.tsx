@@ -3,14 +3,17 @@ import { loadRecordings } from './io/manifest.ts'
 import { useAppStore } from './state/store.ts'
 import { ChannelPanel } from './ui/ChannelPanel.tsx'
 import { Controls } from './ui/Controls.tsx'
+import { SavedSessionList } from './ui/SavedSessionList.tsx'
 import { StatusBadge } from './ui/StatusBadge.tsx'
 
-// M3: ECG and SCG play together in two stacked panels with the same time axis, like Fig. 1F of the paper
-// (docs/roadmap.md). The source is one recording per channel or the synthetic generator.
+// ECG and SCG play together in two stacked panels with the same time axis, like Fig. 1F of the paper
+// (docs/roadmap.md). The source is one recording per channel or the synthetic generator. M4: the live session can
+// be recorded with markers, and saved sessions are exported as CSV.
 function App() {
   const status = useAppStore((s) => s.status)
   const sourceInfo = useAppStore((s) => s.sourceInfo)
   const notSimultaneous = useAppStore((s) => s.notSimultaneous)
+  const storageError = useAppStore((s) => s.storageError)
   const setRecordings = useAppStore((s) => s.setRecordings)
 
   useEffect(() => {
@@ -36,6 +39,11 @@ function App() {
           {status.error}
         </p>
       )}
+      {storageError !== '' && (
+        <p className="error-message" role="alert" data-testid="storage-error">
+          {storageError}
+        </p>
+      )}
       {sourceInfo !== '' && <p className="source-info">{sourceInfo}</p>}
       {/* Two files recorded at different times can be shown together, but only as a demo. */}
       {notSimultaneous && (
@@ -49,6 +57,8 @@ function App() {
         <ChannelPanel channel="ecg" />
         <ChannelPanel channel="scg" />
       </main>
+
+      <SavedSessionList />
     </div>
   )
 }

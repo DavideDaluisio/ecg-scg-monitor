@@ -3,7 +3,7 @@ import type { ChannelId } from '../core/types.ts'
 import { LivePlot } from '../plot/LivePlot.ts'
 import { visibleWindowStart } from '../plot/plotPoints.ts'
 import { addFrameCallback } from '../plot/renderLoop.ts'
-import { getChannelBuffer, getSessionEndSeconds } from '../state/session.ts'
+import { getChannelBuffer, getPlotMarkers, getSessionEndSeconds } from '../state/session.ts'
 import { useAppStore } from '../state/store.ts'
 
 type Props = {
@@ -24,6 +24,7 @@ export function LivePlotView({ channel }: Props) {
       color: css.getPropertyValue(`--${channel}`).trim(),
       axisColor: css.getPropertyValue('--muted').trim(),
       gridColor: css.getPropertyValue('--border').trim(),
+      markerColor: css.getPropertyValue('--marker').trim(),
     })
 
     const removeFrameCallback = addFrameCallback(() => {
@@ -34,7 +35,13 @@ export function LivePlotView({ channel }: Props) {
       if (paused || channelBuffer === null) return
       // Every panel shows the same time window, so ECG and SCG line up in seconds (shared X axis).
       const windowStartS = visibleWindowStart(getSessionEndSeconds(), windowSeconds)
-      plot.draw(channelBuffer.buffer, channelBuffer.fs, windowStartS, windowSeconds)
+      plot.draw(
+        channelBuffer.buffer,
+        channelBuffer.fs,
+        windowStartS,
+        windowSeconds,
+        getPlotMarkers(),
+      )
     })
 
     return () => {

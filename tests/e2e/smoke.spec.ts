@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
 
@@ -168,5 +169,57 @@ test('synthetic ECG + SCG: synchronized pause and cursor', async ({ page }) => {
   await page.getByRole('button', { name: 'Resume' }).click()
   await page.getByRole('button', { name: 'Stop' }).click()
   await expect(page.getByTestId('status-badge')).toHaveText('idle')
+  expect(errors).toEqual([])
+})
+
+// M4: record the synthetic source with a marker, export the saved session as CSV, delete it.
+test('records a session with a marker, exports it as CSV and deletes it', async ({ page }) => {
+  const errors = watchErrors(page)
+  page.on('dialog', (dialog) => void dialog.accept()) // the "Delete …?" confirmation
+
+  await page.goto('./')
+  await expect(page.getByText('No saved session yet')).toBeVisible()
+  await page.getByRole('combobox', { name: 'Source' }).selectOption('synthetic')
+  await page.getByRole('button', { name: 'Start' }).click()
+  await expect(page.getByTestId('status-badge')).toHaveText('running')
+  // Markers only while recording.
+  await expect(page.getByRole('button', { name: 'Add marker' })).toBeDisabled()
+
+  await page.getByRole('button', { name: 'Record', exact: true }).click()
+  await expect(page.getByTestId('rec-timer')).toBeVisible()
+  await page.waitForTimeout(1000)
+  await page.getByLabel('Marker', { exact: true }).fill('stand up')
+  await page.getByRole('button', { name: 'Add marker' }).click()
+  const feedback = page.getByTestId('last-marker')
+  await expect(feedback).toHaveText(/^Marker "stand up" at \d+\.\d{4} s \(sample \d+\)$/)
+  const markerSample = Number((await feedback.textContent())!.match(/sample (\d+)/)![1])
+  // Pause freezes the display only: the recording goes on.
+  await page.getByRole('button', { name: 'Pause' }).click()
+  await page.waitForTimeout(1000)
+  await page.getByRole('button', { name: 'Stop recording' }).click()
+
+  const row = page.getByTestId('saved-session')
+  await expect(row).toHaveCount(1)
+  await expect(row).toContainText('ECG 3000 Hz · SCG 3000 Hz')
+  await expect(row.getByRole('cell').nth(3)).toHaveText('1') // markers
+  await expect(row.getByRole('cell').nth(1)).toHaveText(/^00:0[1-3]$/) // ≈ 2 s, paused part included
+
+  const downloadPromise = page.waitForEvent('download')
+  await row.getByRole('button', { name: 'Export CSV' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toMatch(/^session_\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.csv$/)
+  const text = await readFile(await download.path(), 'utf8')
+  expect(text.startsWith('# ecg-scg-monitor export v1\n')).toBe(true)
+  expect(text).toContain('\n# synthetic_r_to_ao_ms=80\n')
+  expect(text).toContain('\nsample_index,time_s,ecg_V,scg_V,marker\n')
+  // The marker is in the file on the sample the app showed.
+  const markerRows = text.split('\n').filter((line) => line.endsWith(',stand up'))
+  expect(markerRows).toHaveLength(1)
+  expect(Number(markerRows[0].split(',')[0])).toBe(markerSample)
+
+  await row.getByRole('button', { name: 'Delete' }).click()
+  await expect(page.getByTestId('saved-session')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Resume' }).click()
+  await page.getByRole('button', { name: 'Stop', exact: true }).click()
   expect(errors).toEqual([])
 })

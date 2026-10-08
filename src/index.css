@@ -6,6 +6,8 @@
   --muted: #64748b;
   --ecg: #e11d48;
   --scg: #2563eb;
+  --marker: #d97706;
+  --rec: #dc2626;
   font-family:
     system-ui,
     -apple-system,
@@ -96,7 +98,8 @@ h1 {
 
 button,
 select,
-.number-input {
+.number-input,
+.text-input {
   font: inherit;
   padding: 6px 12px;
   border-radius: 6px;
@@ -107,7 +110,8 @@ select,
 
 button:disabled,
 select:disabled,
-.number-input:disabled {
+.number-input:disabled,
+.text-input:disabled {
   opacity: 0.5;
 }
 
@@ -222,4 +226,81 @@ select:disabled,
 
 .number-input {
   width: 5.5em;
+}
+
+.text-input {
+  width: 11em;
+}
+
+.record-dot {
+  color: var(--rec);
+}
+
+.rec-badge {
+  color: var(--rec);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.marker-feedback {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.saved-sessions {
+  margin-top: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.saved-sessions h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+/* On a phone the table scrolls sideways instead of widening the page. */
+.table-scroll {
+  overflow-x: auto;
+  position: relative; /* keeps the visually hidden header inside the scroll area */
+}
+
+.saved-sessions table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.saved-sessions th,
+.saved-sessions td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.saved-sessions th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.session-note {
+  color: var(--muted);
+}
+
+.row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
