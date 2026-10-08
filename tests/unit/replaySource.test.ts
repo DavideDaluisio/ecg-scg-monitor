@@ -11,7 +11,14 @@ const { fs, samples } = parseLvm(
 
 // With fake timers, Date.now() advances together with the timers, so it is used as the pacing clock.
 function makeReplay(loop = true): ReplaySource {
-  return new ReplaySource({ name: 'test', channel: 'ecg', fs, samples, loop, now: () => Date.now() })
+  return new ReplaySource({
+    name: 'test',
+    channel: 'ecg',
+    fs,
+    samples,
+    loop,
+    now: () => Date.now(),
+  })
 }
 
 function collectBlocks(replay: ReplaySource): SampleBlock[] {

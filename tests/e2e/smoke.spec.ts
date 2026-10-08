@@ -32,7 +32,9 @@ test('replays the synthetic ECG demo', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Start' }).click()
   await expect(page.getByTestId('status-badge')).toHaveText('running')
-  await expect(page.getByText('ecg_synthetic_demo · 3000 Hz · 30,000 samples (10.0 s)')).toBeVisible()
+  await expect(
+    page.getByText('ecg_synthetic_demo · 3000 Hz · 30,000 samples (10.0 s)'),
+  ).toBeVisible()
   await expect(page.getByTestId('plot-ecg').locator('canvas')).toBeVisible()
   await page.waitForTimeout(1000) // let the trace scroll for a moment
 
@@ -60,7 +62,9 @@ test('replays the synthetic SCG demo', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Start' }).click()
   await expect(page.getByTestId('status-badge')).toHaveText('running')
-  await expect(page.getByText('scg_synthetic_demo · 3000 Hz · 30,000 samples (10.0 s)')).toBeVisible()
+  await expect(
+    page.getByText('scg_synthetic_demo · 3000 Hz · 30,000 samples (10.0 s)'),
+  ).toBeVisible()
   await expect(page.getByTestId('plot-scg').locator('canvas')).toBeVisible()
   await expect(page.getByTestId('placeholder-ecg')).toHaveText('No ECG signal in this recording')
   await expect(page.getByTestId('plot-ecg')).toHaveCount(0)

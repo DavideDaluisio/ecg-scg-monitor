@@ -4,7 +4,15 @@ import { decimateMinMax } from '../../src/plot/decimate.ts'
 function run(samples: number[], buckets: number, firstIndex = 0, fs = 1000, valueScale = 1) {
   const outX = new Float64Array(2 * buckets + samples.length)
   const outY: (number | null)[] = new Array(outX.length).fill(null)
-  const count = decimateMinMax(Float32Array.from(samples), firstIndex, fs, buckets, valueScale, outX, outY)
+  const count = decimateMinMax(
+    Float32Array.from(samples),
+    firstIndex,
+    fs,
+    buckets,
+    valueScale,
+    outX,
+    outY,
+  )
   return { count, x: Array.from(outX.subarray(0, count)), y: outY.slice(0, count) }
 }
 

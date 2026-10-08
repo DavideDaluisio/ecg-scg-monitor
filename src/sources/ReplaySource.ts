@@ -87,7 +87,9 @@ export class ReplaySource implements DataSource {
     const maxPerTick = MAX_CATCH_UP_S * this.fs
     if (due - this.emitted > maxPerTick) {
       const skippedS = (due - this.emitted - maxPerTick) / this.fs
-      console.info(`Replay fell behind by ${skippedS.toFixed(1)} s (tab in background?), continuing from here`)
+      console.info(
+        `Replay fell behind by ${skippedS.toFixed(1)} s (tab in background?), continuing from here`,
+      )
       due = this.emitted + maxPerTick
       // Move the start instant so that "now" corresponds to `due`: the replay pauses instead of skipping samples.
       this.startTimeMs = this.now() - (due / this.fs) * 1000

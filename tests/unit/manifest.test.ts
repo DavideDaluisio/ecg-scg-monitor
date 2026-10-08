@@ -13,7 +13,9 @@ const validEntry = {
 
 describe('parseManifest', () => {
   it('reads valid entries and marks local ones', () => {
-    expect(parseManifest({ recordings: [validEntry] }, true)).toEqual([{ ...validEntry, isLocal: true }])
+    expect(parseManifest({ recordings: [validEntry] }, true)).toEqual([
+      { ...validEntry, isLocal: true },
+    ])
   })
 
   it('returns an empty list for a missing or malformed manifest', () => {

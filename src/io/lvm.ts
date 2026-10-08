@@ -48,7 +48,13 @@ export function parseLvm(text: string): ParsedSignal {
     const columns = line.split('\t')
     const time = Number(columns[0])
     const value = Number(columns[1])
-    if (columns.length < 2 || columns[0] === '' || columns[1] === '' || isNaN(time) || isNaN(value)) {
+    if (
+      columns.length < 2 ||
+      columns[0] === '' ||
+      columns[1] === '' ||
+      isNaN(time) ||
+      isNaN(value)
+    ) {
       throw new Error(`LVM line ${i + 1}: expected "time<TAB>value", got "${line}"`)
     }
     if (n === 0) firstTime = time

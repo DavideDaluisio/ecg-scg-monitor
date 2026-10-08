@@ -14,7 +14,9 @@ function App() {
 
   useEffect(() => {
     // Local (real) recordings exist only on the dev server of a lab computer, never in a build.
-    void loadRecordings(`${import.meta.env.BASE_URL}samples/`, import.meta.env.DEV).then(setRecordings)
+    void loadRecordings(`${import.meta.env.BASE_URL}samples/`, import.meta.env.DEV).then(
+      setRecordings,
+    )
   }, [setRecordings])
 
   return (
