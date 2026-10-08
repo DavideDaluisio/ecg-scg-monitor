@@ -46,6 +46,11 @@ export function parseManifest(json: unknown, isLocal: boolean): RecordingEntry[]
   return entries
 }
 
+/** True when the manifest says that the two recordings were made at the same time (in either direction). */
+export function areSimultaneous(a: RecordingEntry, b: RecordingEntry): boolean {
+  return a.simultaneousWith === b.id || b.simultaneousWith === a.id
+}
+
 /**
  * Public recordings first, then the local ones (if this computer has them).
  * `includeLocal` is false in production builds: the build deletes samples/local/, so asking for it would only

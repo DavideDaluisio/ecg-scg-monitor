@@ -5,11 +5,12 @@ import { ChannelPanel } from './ui/ChannelPanel.tsx'
 import { Controls } from './ui/Controls.tsx'
 import { StatusBadge } from './ui/StatusBadge.tsx'
 
-// M2: one ECG or SCG recording replays live in the panel of its channel. Both together arrive in M3
-// (docs/roadmap.md).
+// M3: ECG and SCG play together in two stacked panels with the same time axis, like Fig. 1F of the paper
+// (docs/roadmap.md). The source is one recording per channel or the synthetic generator.
 function App() {
   const status = useAppStore((s) => s.status)
   const sourceInfo = useAppStore((s) => s.sourceInfo)
+  const notSimultaneous = useAppStore((s) => s.notSimultaneous)
   const setRecordings = useAppStore((s) => s.setRecordings)
 
   useEffect(() => {
@@ -36,6 +37,13 @@ function App() {
         </p>
       )}
       {sourceInfo !== '' && <p className="source-info">{sourceInfo}</p>}
+      {/* Two files recorded at different times can be shown together, but only as a demo. */}
+      {notSimultaneous && (
+        <p className="warning-message" role="note" data-testid="not-simultaneous">
+          Not simultaneous: these ECG and SCG files were recorded at different times, so the delay
+          between them means nothing.
+        </p>
+      )}
 
       <main className="panels">
         <ChannelPanel channel="ecg" />

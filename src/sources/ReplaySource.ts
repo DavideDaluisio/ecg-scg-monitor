@@ -1,4 +1,5 @@
-// Replays a recorded signal (one channel) at real speed, looping by default. Rules: src/sources/CLAUDE.md.
+// Replays recorded signals (one track per channel) at real speed, looping by default.
+// Rules: src/sources/CLAUDE.md.
 import type {
   ChannelId,
   ChannelInfo,
@@ -6,49 +7,58 @@ import type {
   SampleBlock,
   SourceStatus,
 } from '../core/types.ts'
+import { Pacer } from './pacer.ts'
 
-export interface ReplayOptions {
-  name: string
+/** One recording played on one channel. */
+export interface ReplayTrack {
   channel: ChannelId
   fs: number
   samples: Float32Array // volts, the whole file
-  loop?: boolean // default true
+}
+
+export interface ReplayOptions {
+  name: string
+  // All tracks start at the same instant, so sample index 0 of every channel is the same moment.
+  tracks: ReplayTrack[]
+  loop?: boolean // default true; each track loops on its own length
   // Wall clock in milliseconds, used for pacing only (never as a sample timestamp). Tests pass Date.now with fake timers.
   now?: () => number
 }
 
 const TICK_MS = 20
-// At most 1 s of samples per tick. Browsers slow down timers in background tabs; when the tab comes back,
-// the replay continues from where it was instead of emitting a huge burst.
-const MAX_CATCH_UP_S = 1
+
+// A track plus how far it has been played in the current session.
+interface TrackState extends ReplayTrack {
+  emitted: number // samples emitted since start() (= next sample index)
+  seq: number
+}
 
 export class ReplaySource implements DataSource {
   readonly name: string
   readonly channels: ChannelInfo[]
   status: SourceStatus = { state: 'idle' }
 
-  private readonly channel: ChannelId
-  private readonly fs: number
-  private readonly fileSamples: Float32Array
+  private readonly tracks: TrackState[]
   private readonly loop: boolean
-  private readonly now: () => number
+  private readonly pacer: Pacer
 
   private blockListeners = new Set<(block: SampleBlock) => void>()
   private statusListeners = new Set<(status: SourceStatus) => void>()
   private timer: ReturnType<typeof setInterval> | null = null
-  private startTimeMs = 0 // wall-clock instant that corresponds to sample index 0
-  private emitted = 0 // samples emitted since start() (= next sample index)
-  private seq = 0
 
   constructor(options: ReplayOptions) {
-    if (options.samples.length === 0) throw new Error('Replay needs at least one sample')
+    if (options.tracks.length === 0) throw new Error('Replay needs at least one track')
+    for (const track of options.tracks) {
+      if (track.samples.length === 0) throw new Error('Replay needs at least one sample per track')
+      if (options.tracks.filter((t) => t.channel === track.channel).length > 1) {
+        throw new Error(`Replay has two tracks for the ${track.channel.toUpperCase()} channel`)
+      }
+    }
     this.name = options.name
-    this.channel = options.channel
-    this.fs = options.fs
-    this.fileSamples = options.samples
+    this.tracks = options.tracks.map((track) => ({ ...track, emitted: 0, seq: 0 }))
     this.loop = options.loop ?? true
-    this.now = options.now ?? (() => performance.now())
-    this.channels = [{ id: options.channel, fs: options.fs }]
+    this.pacer = new Pacer(options.now ?? (() => performance.now()))
+    this.channels = options.tracks.map((track) => ({ id: track.channel, fs: track.fs }))
   }
 
   async start(): Promise<void> {
@@ -56,10 +66,12 @@ export class ReplaySource implements DataSource {
     if (state === 'connecting' || state === 'running' || state === 'reconnecting') return
 
     this.setStatus({ state: 'connecting' })
-    // Every session restarts the sample index and seq at 0.
-    this.emitted = 0
-    this.seq = 0
-    this.startTimeMs = this.now()
+    // Every session restarts the sample index and seq of every channel at 0.
+    for (const track of this.tracks) {
+      track.emitted = 0
+      track.seq = 0
+    }
+    this.pacer.start()
     this.timer = setInterval(() => this.tick(), TICK_MS)
     this.setStatus({ state: 'running' })
   }
@@ -81,48 +93,40 @@ export class ReplaySource implements DataSource {
 
   private tick(): void {
     // Drift compensation: emit the samples that should exist by now, not a fixed number per tick.
-    const elapsedS = (this.now() - this.startTimeMs) / 1000
-    let due = Math.floor(elapsedS * this.fs)
-
-    const maxPerTick = MAX_CATCH_UP_S * this.fs
-    if (due - this.emitted > maxPerTick) {
-      const skippedS = (due - this.emitted - maxPerTick) / this.fs
-      console.info(
-        `Replay fell behind by ${skippedS.toFixed(1)} s (tab in background?), continuing from here`,
-      )
-      due = this.emitted + maxPerTick
-      // Move the start instant so that "now" corresponds to `due`: the replay pauses instead of skipping samples.
-      this.startTimeMs = this.now() - (due / this.fs) * 1000
+    const elapsedS = this.pacer.elapsedSeconds()
+    let allEnded = true
+    for (const track of this.tracks) {
+      let due = Math.floor(elapsedS * track.fs)
+      if (!this.loop) due = Math.min(due, track.samples.length)
+      this.emitUpTo(track, due)
+      if (this.timer === null) return // a listener called stop(): no blocks after stop()
+      if (this.loop || track.emitted < track.samples.length) allEnded = false
     }
 
-    if (!this.loop) due = Math.min(due, this.fileSamples.length)
-    this.emitUpTo(due)
-
-    if (!this.loop && this.emitted >= this.fileSamples.length) {
+    if (allEnded) {
       this.clearTimer()
       this.setStatus({ state: 'ended' })
     }
   }
 
-  // Emits samples [emitted, due) as views on the file (no copy). A block never crosses the end of the file:
-  // at the loop point it is split in two.
-  private emitUpTo(due: number): void {
-    const length = this.fileSamples.length
-    while (this.emitted < due) {
-      const position = this.emitted % length
-      const count = Math.min(due - this.emitted, length - position)
+  // Emits samples [emitted, due) of one track as views on the file (no copy). A block never crosses the end of
+  // the file: at the loop point it is split in two.
+  private emitUpTo(track: TrackState, due: number): void {
+    const length = track.samples.length
+    while (track.emitted < due) {
+      const position = track.emitted % length
+      const count = Math.min(due - track.emitted, length - position)
       const block: SampleBlock = {
-        channel: this.channel,
-        seq: this.seq++,
-        firstSampleIndex: this.emitted,
-        fs: this.fs,
-        samples: this.fileSamples.subarray(position, position + count),
+        channel: track.channel,
+        seq: track.seq++,
+        firstSampleIndex: track.emitted,
+        fs: track.fs,
+        samples: track.samples.subarray(position, position + count),
       }
-      this.emitted += count
+      track.emitted += count
       for (const listener of this.blockListeners) {
         listener(block)
-        // A listener may have called stop(): no blocks after stop().
-        if (this.timer === null) return
+        if (this.timer === null) return // a listener called stop()
       }
     }
   }

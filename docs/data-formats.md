@@ -52,7 +52,10 @@ Both are 3000 Hz, 30,000 samples (10 s = exactly 12 beats at 72 bpm, so they loo
 
 - `ecg_synthetic_demo.lvm`: ECG, same PQRST and LVM layout as `tests/fixtures/ecg_synthetic.lvm`.
 - `scg_synthetic_demo.csv`: SCG, same damped AO/AC bursts and CSV layout as `tests/fixtures/scg_synthetic.csv`.
-  Listed with `simultaneousWith: null` for now: playing ECG and SCG together is M3.
+  The burst **starts** 80 ms after each R peak, so its highest peak is ≈ 87 ms after R. (The live `SyntheticSource`
+  instead puts the AO **peak** exactly at the configured delay.)
+- The two demos are generated from the same beat times, so each lists the other in `simultaneousWith`: played
+  together, they get no "not simultaneous" note.
 
 ## Choosing the parser and the channel
 

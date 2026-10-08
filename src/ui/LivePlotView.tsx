@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
 import type { ChannelId } from '../core/types.ts'
 import { LivePlot } from '../plot/LivePlot.ts'
+import { visibleWindowStart } from '../plot/plotPoints.ts'
 import { addFrameCallback } from '../plot/renderLoop.ts'
-import { getChannelBuffer } from '../state/session.ts'
+import { getChannelBuffer, getSessionEndSeconds } from '../state/session.ts'
 import { useAppStore } from '../state/store.ts'
 
 type Props = {
@@ -29,8 +30,11 @@ export function LivePlotView({ channel }: Props) {
       // getState() reads the store without subscribing, so this does not re-render anything.
       const { paused, windowSeconds } = useAppStore.getState()
       const channelBuffer = getChannelBuffer(channel)
-      if (paused || channelBuffer === null) return // Pause freezes the display only
-      plot.draw(channelBuffer.buffer, channelBuffer.fs, windowSeconds)
+      // Pause freezes the display only. Every panel reads the same flag in the same frame, so they freeze together.
+      if (paused || channelBuffer === null) return
+      // Every panel shows the same time window, so ECG and SCG line up in seconds (shared X axis).
+      const windowStartS = visibleWindowStart(getSessionEndSeconds(), windowSeconds)
+      plot.draw(channelBuffer.buffer, channelBuffer.fs, windowStartS, windowSeconds)
     })
 
     return () => {

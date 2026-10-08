@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { parseManifest } from '../../src/io/manifest.ts'
+import { areSimultaneous, parseManifest, type RecordingEntry } from '../../src/io/manifest.ts'
 
 const validEntry = {
   id: 'ecg_synthetic_demo',
@@ -38,5 +38,28 @@ describe('parseManifest', () => {
   it('defaults simultaneousWith to null', () => {
     const { simultaneousWith: _, ...withoutField } = validEntry
     expect(parseManifest({ recordings: [withoutField] }, false)[0].simultaneousWith).toBeNull()
+  })
+})
+
+describe('areSimultaneous', () => {
+  const entry = (id: string, simultaneousWith: string | null): RecordingEntry => ({
+    id,
+    file: `${id}.csv`,
+    channel: 'ecg',
+    fs: 3000,
+    samples: 3000,
+    durationS: 1,
+    simultaneousWith,
+    isLocal: false,
+  })
+
+  it('is true when either recording names the other', () => {
+    expect(areSimultaneous(entry('a', 'b'), entry('b', null))).toBe(true)
+    expect(areSimultaneous(entry('a', null), entry('b', 'a'))).toBe(true)
+  })
+
+  it('is false otherwise', () => {
+    expect(areSimultaneous(entry('a', null), entry('b', null))).toBe(false)
+    expect(areSimultaneous(entry('a', 'c'), entry('b', 'd'))).toBe(false)
   })
 })

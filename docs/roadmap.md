@@ -7,7 +7,7 @@ Order requested by the supervisor: ECG first, then SCG, then both together. Stat
 | M0  | Scaffold                           | done   | GitHub Pages shows the app shell, CI green                                                |
 | M1  | ECG live (replay)                  | done   | 24 s of file = 24 s on screen, smooth 60 fps, tests green, e2e smoke ok                   |
 | M2  | SCG live                           | done   | SCG file scrolls like the ECG, parser tests green                                         |
-| M3  | ECG + SCG together (paper Fig. 1F) | todo   | synthetic R→AO delay read on the plot matches the configured one (±1 sample)              |
+| M3  | ECG + SCG together (paper Fig. 1F) | done   | synthetic R→AO delay read on the plot matches the configured one (±1 sample)              |
 | M4  | Recording, markers, export         | todo   | 5-min export re-read in Python with samples and markers at the right index                |
 | M5  | BLE (BL653µ)                       | todo   | packetized-synthetic decoder tests green; with hardware: 10 min stable, < 1 % packet loss |
 
@@ -41,9 +41,11 @@ Order requested by the supervisor: ECG first, then SCG, then both together. Stat
 
 ## M3 – ECG + SCG together
 
-- [ ] `SyntheticSource` (PQRST + SCG AO/AC, seeded, configurable HR, R→AO delay and fs per channel)
-- [ ] Dual replay (two non-simultaneous files started together, labeled "not simultaneous" in the UI)
-- [ ] Two stacked panels, shared X axis in seconds, synchronized pause
+- [x] `SyntheticSource` (PQRST + SCG AO/AC, seeded, configurable HR, R→AO delay and fs per channel) + settings form
+- [x] Dual replay (two non-simultaneous files started together, labeled "not simultaneous" in the UI)
+- [x] Two stacked panels, shared X axis in seconds, synchronized pause
+- [x] Cursor synchronized across the panels, with the time and value of the point under it
+- [x] `tests/unit/alignment.test.ts`: R→AO read on the plotted points = configured ±1 sample (4 HR/delay/fs sets)
 
 ## M4 – Recording, markers, export
 

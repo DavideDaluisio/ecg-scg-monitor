@@ -13,12 +13,29 @@ const { fs, samples } = parseLvm(
 function makeReplay(loop = true): ReplaySource {
   return new ReplaySource({
     name: 'test',
-    channel: 'ecg',
-    fs,
-    samples,
+    tracks: [{ channel: 'ecg', fs, samples }],
     loop,
     now: () => Date.now(),
   })
+}
+
+// ECG: the 2 s file at 3000 Hz. SCG: 0.5 s at 1000 Hz (500 samples), so the two tracks loop at different points.
+const scgSamples = Float32Array.from({ length: 500 }, (_, i) => i)
+
+function makeDualReplay(loop = true): ReplaySource {
+  return new ReplaySource({
+    name: 'dual',
+    tracks: [
+      { channel: 'ecg', fs, samples },
+      { channel: 'scg', fs: 1000, samples: scgSamples },
+    ],
+    loop,
+    now: () => Date.now(),
+  })
+}
+
+function blocksOf(blocks: SampleBlock[], channel: string): SampleBlock[] {
+  return blocks.filter((block) => block.channel === channel)
 }
 
 function collectBlocks(replay: ReplaySource): SampleBlock[] {
@@ -201,5 +218,93 @@ describe('ReplaySource', () => {
     vi.advanceTimersByTime(1000)
     expect(callback).not.toHaveBeenCalled()
     replay.stop()
+  })
+
+  it('rejects an empty track list and two tracks on the same channel', () => {
+    expect(() => new ReplaySource({ name: 'x', tracks: [] })).toThrow('at least one track')
+    expect(
+      () =>
+        new ReplaySource({
+          name: 'x',
+          tracks: [
+            { channel: 'ecg', fs, samples },
+            { channel: 'ecg', fs, samples },
+          ],
+        }),
+    ).toThrow('two tracks for the ECG channel')
+  })
+})
+
+describe('ReplaySource with two tracks (ECG + SCG)', () => {
+  it('declares both channels with their own fs', () => {
+    expect(makeDualReplay().channels).toEqual([
+      { id: 'ecg', fs: 3000 },
+      { id: 'scg', fs: 1000 },
+    ])
+  })
+
+  it('starts both channels at index 0 and paces each at its own fs', async () => {
+    const replay = makeDualReplay()
+    const blocks = collectBlocks(replay)
+    await replay.start()
+    vi.advanceTimersByTime(10_000)
+
+    const ecg = blocksOf(blocks, 'ecg')
+    const scg = blocksOf(blocks, 'scg')
+    expect(ecg[0].firstSampleIndex).toBe(0)
+    expect(scg[0].firstSampleIndex).toBe(0)
+    // Same elapsed time on both channels (±1 tick = 20 ms).
+    expect(Math.abs(totalSamples(ecg) - 30_000)).toBeLessThanOrEqual(60)
+    expect(Math.abs(totalSamples(scg) - 10_000)).toBeLessThanOrEqual(20)
+    expect(Math.abs(totalSamples(ecg) / 3000 - totalSamples(scg) / 1000)).toBeLessThan(0.002)
+    replay.stop()
+  })
+
+  it('keeps index and seq continuous per channel, each track looping on its own length', async () => {
+    const replay = makeDualReplay()
+    const blocks = collectBlocks(replay)
+    await replay.start()
+    vi.advanceTimersByTime(2500)
+
+    for (const channel of ['ecg', 'scg']) {
+      const channelBlocks = blocksOf(blocks, channel)
+      expect(channelBlocks[0].seq).toBe(0)
+      for (let i = 1; i < channelBlocks.length; i++) {
+        const previous = channelBlocks[i - 1]
+        expect(channelBlocks[i].firstSampleIndex).toBe(
+          previous.firstSampleIndex + previous.samples.length,
+        )
+        expect(channelBlocks[i].seq).toBe(previous.seq + 1)
+      }
+    }
+    // The SCG file (500 samples) loops at 500, 1000, 1500…; the ECG file (6000 samples) not yet.
+    const scgLoop = blocksOf(blocks, 'scg').find((block) => block.firstSampleIndex === 1500)
+    expect(scgLoop?.samples[0]).toBe(0)
+    replay.stop()
+  })
+
+  it('without loop, ends only when the longest track is over', async () => {
+    const replay = makeDualReplay(false)
+    const blocks = collectBlocks(replay)
+    await replay.start()
+    vi.advanceTimersByTime(1000) // the 0.5 s SCG is over, the 2 s ECG is not
+    expect(totalSamples(blocksOf(blocks, 'scg'))).toBe(500)
+    expect(replay.status.state).toBe('running')
+
+    vi.advanceTimersByTime(1500)
+    expect(totalSamples(blocksOf(blocks, 'ecg'))).toBe(6000)
+    expect(replay.status.state).toBe('ended')
+  })
+
+  it('a listener can call stop() on the first channel: the second gets no block', async () => {
+    const replay = makeDualReplay()
+    const channels: string[] = []
+    replay.onBlock((block) => {
+      channels.push(block.channel)
+      replay.stop()
+    })
+    await replay.start()
+    vi.advanceTimersByTime(1000)
+    expect(channels).toEqual(['ecg'])
   })
 })

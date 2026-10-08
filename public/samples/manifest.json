@@ -7,7 +7,7 @@
       "fs": 3000,
       "samples": 30000,
       "durationS": 10,
-      "simultaneousWith": null
+      "simultaneousWith": "scg_synthetic_demo"
     },
     {
       "id": "scg_synthetic_demo",
@@ -16,7 +16,7 @@
       "fs": 3000,
       "samples": 30000,
       "durationS": 10,
-      "simultaneousWith": null
+      "simultaneousWith": "ecg_synthetic_demo"
     }
   ]
 }
