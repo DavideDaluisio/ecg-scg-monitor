@@ -2,18 +2,22 @@
 // Plain module (no React): the UI calls these functions, the plot reads the buffers every frame.
 import { RingBuffer } from '../core/ringBuffer.ts'
 import type { ChannelId, DataSource } from '../core/types.ts'
-import { areSimultaneous } from '../io/manifest.ts'
 import { parseRecording } from '../io/parseRecording.ts'
 import type { PlotMarker } from '../plot/LivePlot.ts'
 import { getAppDb } from '../recording/db.ts'
-import { cleanMarkerLabel, referenceChannel } from '../recording/markers.ts'
+import { cleanMarkerLabel, markerRecordingTimeS, referenceChannel } from '../recording/markers.ts'
 import { Recorder } from '../recording/recorder.ts'
 import { savedSessionName } from '../recording/sessionName.ts'
 import type { SavedChannel, SavedSession, SavedSessionSource } from '../recording/types.ts'
 import { ReplaySource, type ReplayTrack } from '../sources/ReplaySource.ts'
 import { SyntheticSource } from '../sources/SyntheticSource.ts'
 import { refreshSavedSessions } from './savedSessions.ts'
-import { useAppStore, type ReplayInput, type SyntheticSettings } from './store.ts'
+import {
+  areReplayInputsSimultaneous,
+  useAppStore,
+  type ReplayInput,
+  type SyntheticSettings,
+} from './store.ts'
 
 const BUFFER_SECONDS = 30
 const DEFAULT_MARKER_LABEL = 'marker' // when the label field is empty
@@ -47,6 +51,10 @@ let recordingStartS = 0
 // Markers of the live session, drawn on every panel. The same array for the whole app (the plot keeps a
 // reference to it), emptied by the next start; kept after Stop like the last frame.
 const plotMarkers: PlotMarker[] = []
+// Increases when a marker is added, renamed or cleared: the plot redraws when it changes.
+let plotMarkersVersion = 0
+// The plot markers of the recording in progress, in the order of the saved session's markers (for renaming).
+let recordingPlotMarkers: PlotMarker[] = []
 
 export function getChannelBuffer(channel: ChannelId): ChannelBuffer | null {
   return buffers.get(channel) ?? null
@@ -64,6 +72,10 @@ export function getSessionEndSeconds(): number {
 
 export function getPlotMarkers(): readonly PlotMarker[] {
   return plotMarkers
+}
+
+export function getPlotMarkersVersion(): number {
+  return plotMarkersVersion
 }
 
 /** Seconds of signal recorded so far (0 when not recording). */
@@ -91,7 +103,7 @@ export function startReplay(inputs: ReplayInput[]): Promise<void> {
       kind: 'replay',
       info: `${info} · loop`,
       settings: {},
-      notSimultaneous: inputs.length > 1 && !areInputsSimultaneous(inputs),
+      notSimultaneous: inputs.length > 1 && !areReplayInputsSimultaneous(inputs),
     }
   })
 }
@@ -171,9 +183,10 @@ export function startRecording(): void {
     },
   })
 
+  recordingPlotMarkers = []
   const store = useAppStore.getState()
   store.setStorageError('')
-  store.setLastMarker(null)
+  store.setRecordingMarkers([])
   store.setRecordingName(name)
   // Asks the browser not to delete saved sessions when the disk is almost full (it may say no).
   if ('storage' in navigator) navigator.storage.persist().catch(() => {})
@@ -184,7 +197,10 @@ export async function stopRecording(): Promise<void> {
   const finishing = recorder
   if (finishing === null) return
   recorder = null
+  recordingPlotMarkers = []
+  // From now on its markers are listed (and renamed) under Saved sessions.
   useAppStore.getState().setRecordingName(null)
+  useAppStore.getState().setRecordingMarkers([])
   await finishing.finish()
   await refreshSavedSessions()
 }
@@ -202,10 +218,33 @@ export function addMarker(label: string): void {
 
   const sampleIndex = Math.max(recorded.firstSampleIndex, channelBuffer.buffer.endIndex - 1)
   const text = cleanMarkerLabel(label) || DEFAULT_MARKER_LABEL
-  recorder.addMarker({ channel, sampleIndex, label: text })
-  const timeS = sampleIndex / channelBuffer.fs
-  plotMarkers.push({ timeS, label: text })
-  useAppStore.getState().setLastMarker({ label: text, sampleIndex, timeS })
+  const marker = { channel, sampleIndex, label: text }
+  recorder.addMarker(marker)
+  // On the plot: seconds since Start (the X axis). In the list: seconds since Record (the export's time).
+  const plotMarker = { timeS: sampleIndex / channelBuffer.fs, label: text }
+  plotMarkers.push(plotMarker)
+  recordingPlotMarkers.push(plotMarker)
+  plotMarkersVersion++
+  const store = useAppStore.getState()
+  const timeS = markerRecordingTimeS(recordingChannels, marker)
+  store.setRecordingMarkers([...store.recordingMarkers, { label: text, sampleIndex, timeS }])
+}
+
+/**
+ * Renames the marker at `index` (in the order they were added) of the recording in progress, in the saved session
+ * and on the plot. An empty name changes nothing.
+ */
+export function renameLiveMarker(index: number, label: string): void {
+  const text = cleanMarkerLabel(label)
+  const plotMarker = recordingPlotMarkers[index]
+  if (recorder === null || text === '' || plotMarker === undefined) return
+  recorder.renameMarker(index, text)
+  plotMarker.label = text
+  plotMarkersVersion++
+  const store = useAppStore.getState()
+  store.setRecordingMarkers(
+    store.recordingMarkers.map((row, i) => (i === index ? { ...row, label: text } : row)),
+  )
 }
 
 // Common part of every start: stop the old session, prepare the source, create one ring buffer per channel,
@@ -232,7 +271,7 @@ async function startSession(prepare: () => Promise<PreparedSource>): Promise<voi
       })
     }
     plotMarkers.length = 0
-    store.setLastMarker(null)
+    plotMarkersVersion++
     store.setSessionChannels(newSource.channels.map((channel) => channel.id))
     store.setNotSimultaneous(next.notSimultaneous)
     unsubscribe = [
@@ -259,12 +298,15 @@ async function startSession(prepare: () => Promise<PreparedSource>): Promise<voi
 
 // Reads and parses the file of one channel. Errors name the file, since two files may be loading.
 async function loadTrack(input: ReplayInput): Promise<ReplayTrack & { name: string }> {
-  const name = input.kind === 'entry' ? input.entry.id : input.file.name
   const fileName = input.kind === 'entry' ? input.entry.file : input.file.name
+  const column = input.kind === 'entry' ? input.entry.column : input.column
+  // A file from disk is named after the file, plus its column when it has several signals.
+  let name = input.kind === 'entry' ? input.entry.id : input.file.name
+  if (input.kind === 'file' && column !== null) name += ` column ${column}`
   try {
     const data =
       input.kind === 'entry' ? await fetchSample(fileName) : await input.file.arrayBuffer()
-    const { fs, samples } = await parseRecording(fileName, data)
+    const { fs, samples } = await parseRecording(fileName, data, column)
     return { name, channel: input.channel, fs, samples }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -276,11 +318,4 @@ async function fetchSample(file: string): Promise<ArrayBuffer> {
   const response = await fetch(`${import.meta.env.BASE_URL}samples/${file}`)
   if (!response.ok) throw new Error(`Could not load ${file} (HTTP ${response.status})`)
   return response.arrayBuffer()
-}
-
-// Two manifest recordings are simultaneous only if the manifest says so. A file from disk never is: nothing
-// tells us when it was recorded.
-function areInputsSimultaneous(inputs: ReplayInput[]): boolean {
-  const [a, b] = inputs
-  return a.kind === 'entry' && b.kind === 'entry' && areSimultaneous(a.entry, b.entry)
 }

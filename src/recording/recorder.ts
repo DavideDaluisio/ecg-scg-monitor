@@ -64,6 +64,20 @@ export class Recorder {
     })
   }
 
+  /**
+   * Changes the label of the marker at `index` (in the order they were added). It must go through the recorder:
+   * every chunk rewrites the stored session from the recorder's copy, so a change written elsewhere would be lost.
+   */
+  renameMarker(index: number, label: string): void {
+    if (this.finished || this.failed) return
+    this.enqueue(async (db, session) => {
+      const marker = session.markers[index]
+      if (marker === undefined) return
+      marker.label = label
+      await saveSessionMeta(db, session)
+    })
+  }
+
   /** Stores the last partial chunks, marks the session complete and waits until everything is written. */
   async finish(): Promise<void> {
     if (!this.finished) {

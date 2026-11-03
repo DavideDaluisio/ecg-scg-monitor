@@ -1,17 +1,21 @@
-// CSV export of a saved session (format: docs/data-formats.md, "CSV export"). Pure functions: no DOM, no database.
+// CSV export of a saved session, for Python, MATLAB and scripts/check_export.py (format: docs/data-formats.md,
+// "CSV export"). For people, the Excel export (xlsxExport.ts) is easier to read. Pure functions: no DOM, no database.
 // Raw is sacred: every sample is written exactly (it reads back to the same Float32), missing ones are empty
 // cells, and the sample index is the live session's one (never re-based or resampled).
-import { sampleIndexToSeconds, secondsToSampleIndex } from '../core/time.ts'
-import type { ChannelId } from '../core/types.ts'
+import { sampleIndexToSeconds } from '../core/time.ts'
+import { recordingZeroSeconds } from '../recording/markers.ts'
 import type { SavedSession } from '../recording/types.ts'
-
-/** The samples of one recorded channel, as loaded from IndexedDB. */
-export interface ExportChannel {
-  id: ChannelId
-  fs: number
-  firstSampleIndex: number
-  samples: Float32Array // volts, NaN = missing
-}
+import {
+  formatSample,
+  formatSeconds,
+  groupByClock,
+  localDateTime,
+  MARKER_SEPARATOR,
+  markersOnClock,
+  rowRange,
+  sampleAt,
+  type ExportChannel,
+} from './exportShared.ts'
 
 /** One CSV file. */
 export interface ExportFile {
@@ -22,11 +26,13 @@ export interface ExportFile {
   parts: Iterable<string>
 }
 
-const FORMAT_LINE = '# ecg-scg-monitor export v1'
-const CHANNEL_ORDER: ChannelId[] = ['ecg', 'scg']
+// Byte-order mark: tells Excel the file is UTF-8, so "·", "→" and accented marker labels show correctly.
+// pandas, MATLAB and scripts/check_export.py skip it.
+const BOM = String.fromCharCode(0xfeff)
+const FORMAT_LINE =
+  '# ECG/SCG Monitor export - format v2 - standard CSV (comma separator and point decimals)'
 // About 10 ms of work on a laptop (≈ 40 ms on a phone): short enough not to stall the live plots and source.
 const ROWS_PER_PART = 5_000
-const MARKER_SEPARATOR = ' | ' // several markers on the same sample
 
 /**
  * One file with every channel when they all have the same fs, otherwise one file per channel
@@ -34,70 +40,80 @@ const MARKER_SEPARATOR = ' | ' // several markers on the same sample
  */
 export function buildCsvExport(session: SavedSession, channels: ExportChannel[]): ExportFile[] {
   if (channels.length === 0) throw new Error(`${session.name} has no recorded channel`)
-  const ordered = [...channels].sort(
-    (a, b) => CHANNEL_ORDER.indexOf(a.id) - CHANNEL_ORDER.indexOf(b.id),
-  )
-  if (ordered.every((channel) => channel.fs === ordered[0].fs)) {
-    return [buildFile(`${session.name}.csv`, session, ordered)]
+  // time_s = 0 at the start of the recording: the first recorded sample of any channel. The same zero for every
+  // file, so the same instant has the same time_s in the ECG and in the SCG file.
+  const zeroS = recordingZeroSeconds(channels)
+  const groups = groupByClock(channels)
+  if (groups.length === 1) {
+    return [buildFile(`${session.name}.csv`, session, groups[0], zeroS)]
   }
-  return ordered.map((channel) =>
-    buildFile(`${session.name}_${channel.id}.csv`, session, [channel]),
+  return groups.map((group) =>
+    buildFile(`${session.name}_${group[0].id}.csv`, session, group, zeroS),
   )
 }
 
-/**
- * The shortest decimal text that reads back to exactly the same Float32 value (e.g. 1.605213, not
- * 1.6052130460739136). Empty for NaN (missing sample).
- */
-export function formatSample(value: number): string {
-  if (Number.isNaN(value)) return ''
-  if (value === 0 || !Number.isFinite(value)) return String(value)
-  // A Float32 needs at most 9 significant digits. Starting at 6 gives the shortest text anyway (trailing zeros
-  // are removed) and needs fewer tries.
-  for (let digits = 6; digits < 9; digits++) {
-    const text = value.toPrecision(digits)
-    if (Math.fround(Number(text)) === value) return removeTrailingZeros(text)
-  }
-  return removeTrailingZeros(value.toPrecision(9))
-}
-
-/** A CSV cell: quoted when the text contains a separator, a quote, a line break or '#' (comment character). */
+/** A CSV cell: quoted when the text contains a comma, a quote, a line break or '#' (comment character). */
 export function csvField(text: string): string {
-  if (!/[",#\r\n]/.test(text)) return text
+  if (!/[,"#\r\n]/.test(text)) return text
   return `"${text.replace(/"/g, '""')}"`
 }
 
-function buildFile(fileName: string, session: SavedSession, channels: ExportChannel[]): ExportFile {
+function buildFile(
+  fileName: string,
+  session: SavedSession,
+  channels: ExportChannel[],
+  zeroS: number,
+): ExportFile {
   const fs = channels[0].fs
   const markerLabels = markersOnClock(session, fs)
-
-  // Rows cover every recorded sample and every marker (a marker on a missing sample gets an empty-valued row).
-  let first = Infinity
-  let end = -Infinity
-  for (const channel of channels) {
-    first = Math.min(first, channel.firstSampleIndex)
-    end = Math.max(end, channel.firstSampleIndex + channel.samples.length)
-  }
-  for (const index of markerLabels.keys()) {
-    first = Math.min(first, index)
-    end = Math.max(end, index + 1)
-  }
-
-  const header = [
-    FORMAT_LINE,
-    `# session=${session.name}`,
-    `# start_iso=${session.startIso}`,
-    `# recorded_at_iso=${session.recordedAtIso}`,
-    `# fs=${fs}`,
-    `# source=${session.source}`,
-    `# description=${session.description}`,
-    ...Object.entries(session.settings).map(([key, value]) => `# ${key}=${value}`),
-    ['sample_index', 'time_s', ...channels.map((channel) => `${channel.id}_V`), 'marker'].join(','),
-  ]
+  const { first, end } = rowRange(channels, markerLabels)
+  const header = headerLines(session, channels, fs, end - first)
   return {
     fileName,
-    parts: fileParts(header.join('\n') + '\n', channels, fs, markerLabels, first, end),
+    parts: fileParts(BOM + header.join('\n') + '\n', channels, fs, zeroS, markerLabels, first, end),
   }
+}
+
+// The lines before the data: what the file is, when and how it was recorded, and what each column means.
+// They start with '#', so `comment='#'` skips them; in Excel each one stays in one cell of column A.
+function headerLines(
+  session: SavedSession,
+  channels: ExportChannel[],
+  fs: number,
+  rowCount: number,
+): string[] {
+  return [
+    FORMAT_LINE,
+    `# Session: ${session.name}`,
+    `# Recorded: ${localDateTime(session.recordedAtIso)}`,
+    `# Acquisition started: ${localDateTime(session.startIso)} = sample_index 0`,
+    `# Duration (s): ${(rowCount / fs).toFixed(3)}`,
+    `# Sampling rate (Hz): ${fs}`,
+    `# Source: ${session.source}`,
+    `# Source details: ${headerText(session.description)}`,
+    `# Markers: ${session.markers.length}`,
+    ...Object.entries(session.settings).map(
+      ([key, value]) => `# ${key}: ${headerText(String(value))}`,
+    ),
+    '#',
+    '# Columns:',
+    '#   sample_index = sample number since the acquisition started (the number the app shows for a marker)',
+    '#   time_s = seconds since the start of this recording',
+    ...channels.map(
+      (channel) =>
+        `#   ${channel.id}_V = ${channel.id.toUpperCase()} in volts exactly as received ` +
+        '(not filtered or resampled by the app) - empty cell = missing sample',
+    ),
+    `#   marker = label of the marker placed on this sample ('${MARKER_SEPARATOR.trim()}' between several)`,
+    "# Python: pandas.read_csv with comment='#'",
+    ['sample_index', 'time_s', ...channels.map((c) => `${c.id}_V`), 'marker'].join(','),
+  ]
+}
+
+// A free text (description, setting) on one header line: no line breaks, and no ',' or ';', so that Excel keeps
+// the line in one cell whatever the list separator of the computer ("72,000 samples" → "72 000 samples").
+function headerText(text: string): string {
+  return text.replace(/[\r\n]+/g, ' ').replace(/\s*[,;]\s*/g, ' ')
 }
 
 // A generator (function*): each `yield` hands one part to the reader, and the loop continues only when the
@@ -106,6 +122,7 @@ function* fileParts(
   header: string,
   channels: ExportChannel[],
   fs: number,
+  zeroS: number,
   markerLabels: Map<number, string[]>,
   first: number,
   end: number,
@@ -113,12 +130,8 @@ function* fileParts(
   yield header
   let rows: string[] = []
   for (let index = first; index < end; index++) {
-    let row = `${index},${sampleIndexToSeconds(index, fs).toFixed(6)}`
-    for (const channel of channels) {
-      const offset = index - channel.firstSampleIndex
-      const inRange = offset >= 0 && offset < channel.samples.length
-      row += ',' + (inRange ? formatSample(channel.samples[offset]) : '')
-    }
+    let row = `${index},${formatSeconds(sampleIndexToSeconds(index, fs) - zeroS)}`
+    for (const channel of channels) row += ',' + formatSample(sampleAt(channel, index))
     const labels = markerLabels.get(index)
     row += ',' + (labels === undefined ? '' : csvField(labels.join(MARKER_SEPARATOR)))
     rows.push(row)
@@ -128,31 +141,4 @@ function* fileParts(
     }
   }
   if (rows.length > 0) yield rows.join('\n') + '\n'
-}
-
-// Marker labels by sample index on a clock of `fs`. A marker placed on a channel with another fs moves to the
-// nearest sample of this clock: round(t × fs).
-function markersOnClock(session: SavedSession, fs: number): Map<number, string[]> {
-  const labels = new Map<number, string[]>()
-  for (const marker of session.markers) {
-    const markerFs = session.channels.find((channel) => channel.id === marker.channel)?.fs
-    if (markerFs === undefined) continue
-    const index =
-      markerFs === fs
-        ? marker.sampleIndex
-        : secondsToSampleIndex(sampleIndexToSeconds(marker.sampleIndex, markerFs), fs)
-    const list = labels.get(index)
-    if (list === undefined) labels.set(index, [marker.label])
-    else list.push(marker.label)
-  }
-  return labels
-}
-
-// "1.60000" → "1.6", "2.50000e-7" → "2.5e-7", "120.000" → "120".
-function removeTrailingZeros(text: string): string {
-  // The common case, checked first because this runs for every sample: nothing to remove.
-  if (!text.endsWith('0') && !text.includes('e')) return text
-  const [mantissa, exponent] = text.split('e')
-  const trimmed = mantissa.includes('.') ? mantissa.replace(/\.?0+$/, '') : mantissa
-  return exponent === undefined ? trimmed : `${trimmed}e${exponent}`
 }

@@ -15,7 +15,8 @@ Out of scope for now: DSP filters, heart rate, PEP/LVET. Do not add them unless 
 ## Stack
 
 React 19 + TypeScript (strict) + Vite, `uplot` (plots), `zustand` (UI state), `idb` (IndexedDB),
-`xlsx` (SheetJS, lazy-loaded, import only). Tests: `vitest` (unit), `@playwright/test` (e2e). Lint: `oxlint`.
+`xlsx` (SheetJS, lazy-loaded, import only), `fflate` (zips the `.xlsx` export, lazy-loaded).
+Tests: `vitest` (unit), `@playwright/test` (e2e). Lint: `oxlint`.
 Runs in Chrome (desktop and Android) because M5 needs Web Bluetooth. iPhone is not supported.
 
 ## Commands
@@ -33,7 +34,7 @@ Runs in Chrome (desktop and Android) because M5 needs Web Bluetooth. iPhone is n
 ## Folder map
 
 - `src/core/` – `SampleBlock`, `DataSource`, `RingBuffer`, time helpers. The contracts everything depends on.
-- `src/io/` – parsers (LVM, CSV, XLSX) and CSV export.
+- `src/io/` – parsers (LVM, CSV, XLSX) and exports (Excel `.xlsx`, CSV).
 - `src/sources/` – `ReplaySource`, `SyntheticSource`, later `BleSource`.
 - `src/plot/` – uPlot wrapper, min/max decimation, render loop.
 - `src/recording/` – IndexedDB recorder, saved sessions and markers (M4).

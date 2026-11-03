@@ -3,7 +3,12 @@ import type { ChannelId } from '../core/types.ts'
 import { LivePlot } from '../plot/LivePlot.ts'
 import { visibleWindowStart } from '../plot/plotPoints.ts'
 import { addFrameCallback } from '../plot/renderLoop.ts'
-import { getChannelBuffer, getPlotMarkers, getSessionEndSeconds } from '../state/session.ts'
+import {
+  getChannelBuffer,
+  getPlotMarkers,
+  getPlotMarkersVersion,
+  getSessionEndSeconds,
+} from '../state/session.ts'
 import { useAppStore } from '../state/store.ts'
 
 type Props = {
@@ -41,6 +46,7 @@ export function LivePlotView({ channel }: Props) {
         windowStartS,
         windowSeconds,
         getPlotMarkers(),
+        getPlotMarkersVersion(),
       )
     })
 

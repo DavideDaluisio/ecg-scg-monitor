@@ -8,6 +8,8 @@
   --scg: #2563eb;
   --marker: #d97706;
   --rec: #dc2626;
+  --ok: #16a34a;
+  --warn: #f59e0b;
   font-family:
     system-ui,
     -apple-system,
@@ -43,57 +45,167 @@ body {
   padding: 16px;
 }
 
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+/* The top bar: one row of controls (it wraps on a narrow screen). */
+.top {
+  margin-bottom: 12px;
 }
 
-h1 {
-  margin: 0;
-  font-size: 1.4rem;
-}
-
-.subtitle {
-  margin: 2px 0 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.status-badge {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  background: var(--border);
-  color: var(--muted);
-}
-
-.status-running {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.status-error {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.controls {
+.topbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin: 16px 0;
+  padding-bottom: 8px;
 }
 
-.controls label {
+.topbar h1 {
+  margin: 0 8px 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.topbar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The warning chip and the status dot sit at the right end of the bar. */
+.topbar-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  cursor: pointer;
+}
+
+.icon-button.primary {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
+/* Pause while paused, the source button while its panel is open. */
+.icon-button.active {
+  background: var(--border);
+}
+
+.record-button svg {
+  color: var(--rec);
+}
+
+/* 5 s | 10 s: two buttons joined together, the chosen one darker. */
+.segmented {
+  display: inline-flex;
+}
+
+.segmented button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 0;
+  margin-left: -1px;
+  cursor: pointer;
+}
+
+.segmented button:first-child {
+  margin-left: 0;
+  border-radius: 6px 0 0 6px;
+}
+
+.segmented button:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--border);
+  font-weight: 600;
+}
+
+/* State of the source: the word is in the tooltip (and hidden inside, for screen readers). */
+.status-dot {
+  position: relative;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.status-dot.status-running {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent);
+}
+
+.status-dot.status-connecting,
+.status-dot.status-ended {
+  background: var(--warn);
+}
+
+.status-dot.status-error {
+  background: var(--rec);
+}
+
+.chip-warning {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef9c3;
+  color: #854d0e;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* The source panel and the marker row: boxes under the bar, shown only when needed. */
+.source-panel,
+.marker-bar {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* A red edge: markers exist only while recording. */
+.marker-bar {
+  border-left: 3px solid var(--rec);
+}
+
+.panel-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.source-panel label {
   display: flex;
   align-items: center;
   gap: 6px;
   color: var(--muted);
+}
+
+.advanced {
+  margin-top: 8px;
+}
+
+.advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.advanced .panel-row {
+  margin-top: 8px;
 }
 
 button,
@@ -165,23 +277,6 @@ select:disabled,
   pointer-events: none;
 }
 
-.status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.paused-note {
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
-.status-connecting,
-.status-ended {
-  background: #fef9c3;
-  color: #854d0e;
-}
-
 .file-button {
   cursor: pointer;
   padding: 6px 12px;
@@ -189,6 +284,7 @@ select:disabled,
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text) !important;
+  white-space: nowrap;
 }
 
 .file-button.disabled {
@@ -204,24 +300,36 @@ select:disabled,
   color: #991b1b;
 }
 
+/* What is playing, at the bottom of the source panel. */
 .source-info {
-  margin: 0 0 12px;
+  margin: 8px 0 0;
   color: var(--muted);
   font-size: 0.85rem;
 }
 
-.warning-message {
-  margin: 0 0 12px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: #fef9c3;
-  color: #854d0e;
+/* Source panel: label | list | buttons, one row per choice, so the ECG and SCG lists start at the same x and have
+   the same width. The lists take the width of the longest option (the column is max-content). */
+.source-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, max-content) 1fr;
+  align-items: center;
+  gap: 8px 12px;
 }
 
-.recording-picker {
+/* Each label starts a new row, even after the Source row, which has no buttons. */
+.source-grid > label {
+  grid-column: 1;
+}
+
+.source-grid > select {
+  width: 100%;
+}
+
+.source-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 6px 12px;
 }
 
 .number-input {
@@ -232,19 +340,113 @@ select:disabled,
   width: 11em;
 }
 
-.record-dot {
-  color: var(--rec);
-}
-
+/* Time recorded so far, next to Stop rec, with a slowly blinking red dot. */
 .rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--rec);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.marker-feedback {
+.rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rec);
+  animation: rec-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes rec-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot {
+    animation: none;
+  }
+}
+
+.marker-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* "Markers (n)" at the right end of the marker row. */
+.marker-bar .markers-toggle {
+  margin-left: auto;
+  padding: 6px 12px;
+}
+
+.marker-button {
+  border-color: var(--marker);
+}
+
+/* A marker type created by the user: its button and a small × that removes it. */
+.custom-marker-type {
+  display: inline-flex;
+}
+
+.custom-marker-type .marker-button {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.remove-type-button {
+  padding: 6px 8px;
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
   color: var(--muted);
-  font-size: 0.85rem;
+}
+
+/* Markers of the recording in progress (opened with "Markers (n)"): a long list scrolls instead of pushing the
+   plots down. */
+.marker-list {
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* The column names stay visible while the list scrolls. */
+.marker-list .marker-table th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  box-shadow: inset 0 -1px 0 var(--border); /* a sticky cell loses its border while scrolling */
+}
+
+.marker-table {
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.marker-table th,
+.marker-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.marker-table th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.markers-toggle {
+  padding: 2px 10px;
+}
+
+/* The markers of a saved session, opened under its row. */
+.session-markers > td {
+  background: var(--bg);
 }
 
 .saved-sessions {
@@ -290,10 +492,15 @@ select:disabled,
   color: var(--muted);
 }
 
-.row-actions {
-  display: flex;
-  gap: 6px;
-  justify-content: flex-end;
+/* Buttons at the end of a table row. Not display: flex, which takes the cell out of the row's layout: its bottom
+   border no longer lined up with the other cells. */
+td.row-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.row-actions > * + * {
+  margin-left: 6px;
 }
 
 .visually-hidden {
@@ -303,4 +510,50 @@ select:disabled,
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* Phone: buttons show only their icon (the full name is in aria-label and title), with a larger touch area. */
+@media (max-width: 640px) {
+  .app {
+    padding: 8px;
+  }
+
+  .btn-text {
+    display: none;
+  }
+
+  .icon-button,
+  .segmented button {
+    min-height: 40px;
+    min-width: 40px;
+  }
+
+  /* Row 1: title and state of the source. Row 2: every button. */
+  .topbar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .topbar-controls {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    gap: 6px;
+  }
+
+  /* Source panel: two columns (label | list), the buttons go under their list instead of widening the page. */
+  .source-grid {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+
+  .source-actions {
+    grid-column: 2;
+  }
+
+  .source-panel label {
+    flex-wrap: wrap;
+  }
+
+  .source-panel select {
+    max-width: 100%;
+  }
 }

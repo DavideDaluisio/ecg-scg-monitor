@@ -46,13 +46,21 @@ Order requested by the supervisor: ECG first, then SCG, then both together. Stat
 - [x] Two stacked panels, shared X axis in seconds, synchronized pause
 - [x] Cursor synchronized across the panels, with the time and value of the point under it
 - [x] `tests/unit/alignment.test.ts`: R→AO read on the plotted points = configured ±1 sample (4 HR/delay/fs sets)
+- [x] Multi-channel `.lvm` (column chosen by spreadsheet letter, in the manifest or from disk) + first simultaneous
+      real recording (`ecg_subject02` = column B, `scg_subject02` = column D)
 
 ## M4 – Recording, markers, export
 
 - [x] IndexedDB recorder (raw 1-s chunks, Record / Stop recording), saved-session list, delete
 - [x] Marker button (preset labels + free text, only while recording), vertical lines on the plot
 - [x] CSV export (one file per channel if fs differ, lossless values) + `scripts/check_export.py`
-- [x] `tests/unit/recordingPipeline.test.ts` + e2e (record → marker → export → delete)
+- [x] CSV export v2: readable header with local times and a column legend, `time_s` from 0 at Record, UTF-8 BOM
+- [x] Markers v2: one button per type (presets + user-created types, remembered in the browser), free name field,
+      list of the recording's markers, rename while recording and from the saved sessions
+- [x] Excel export (`.xlsx`): Info, Markers and data sheets, bold frozen header, marker rows in yellow, split into
+      sheets of whole minutes beyond Excel's row limit, lossless values (replaces the `;` CSV flavor)
+- [x] `tests/unit/recordingPipeline.test.ts`, `xlsxExport.test.ts` + e2e (record → markers → rename → Excel and CSV
+      export → delete)
 - [x] 5-min exports (ECG 3000 + SCG 3000 Hz, ECG 500 + SCG 3000 Hz) re-read in Python: samples and markers OK
 
 ## M5 – BLE

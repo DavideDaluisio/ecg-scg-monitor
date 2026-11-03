@@ -1,16 +1,15 @@
 import { useAppStore } from '../state/store.ts'
 
-// Shows the state of the data source (idle, running, error...) and whether the display is paused.
+// The state of the data source as a colored dot (grey idle, amber connecting/ended, green running, red error).
+// The word is in the tooltip and, hidden, in the text, for screen readers and the e2e tests.
 export function StatusBadge() {
   const state = useAppStore((s) => s.status.state)
-  const paused = useAppStore((s) => s.paused)
 
   return (
-    <div className="status">
-      {paused && state === 'running' && <span className="paused-note">display paused</span>}
-      <span className={`status-badge status-${state}`} data-testid="status-badge">
+    <span className={`status-dot status-${state}`} title={state}>
+      <span className="visually-hidden" data-testid="status-badge">
         {state}
       </span>
-    </div>
+    </span>
   )
 }

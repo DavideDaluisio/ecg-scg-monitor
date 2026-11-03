@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { ChannelId } from '../../src/core/types.ts'
-import {
-  buildCsvExport,
-  csvField,
-  formatSample,
-  type ExportChannel,
-  type ExportFile,
-} from '../../src/io/csvExport.ts'
+import { buildCsvExport, csvField, type ExportFile } from '../../src/io/csvExport.ts'
+import { localDateTime, type ExportChannel } from '../../src/io/exportShared.ts'
 import type { Marker, SavedSession } from '../../src/recording/types.ts'
+
+const BOM = String.fromCharCode(0xfeff) // byte-order mark: Excel reads the file as UTF-8
 
 function channel(id: ChannelId, fs: number, first: number, values: number[]): ExportChannel {
   return { id, fs, firstSampleIndex: first, samples: Float32Array.from(values) }
@@ -18,14 +15,27 @@ function textOf(file: ExportFile): string {
   return Array.from(file.parts).join('')
 }
 
-function session(channels: ExportChannel[], markers: Marker[] = []): SavedSession {
+// The data rows (and the final empty line), without the header.
+function dataRows(file: ExportFile): string[] {
+  const lines = textOf(file).split('\n')
+  return lines.slice(lines.findIndex((line) => line.startsWith('sample_index')) + 1)
+}
+
+const RECORDED_ISO = '2026-10-08T13:04:05.000Z'
+const START_ISO = '2026-10-08T13:04:00.000Z'
+
+function session(
+  channels: ExportChannel[],
+  markers: Marker[] = [],
+  description = 'Synthetic ECG + SCG',
+): SavedSession {
   return {
     id: 1,
     name: 'session_2026-10-08_15-04-05',
-    startIso: '2026-10-08T13:04:00.000Z',
-    recordedAtIso: '2026-10-08T13:04:05.000Z',
+    startIso: START_ISO,
+    recordedAtIso: RECORDED_ISO,
     source: 'synthetic',
-    description: 'Synthetic ECG + SCG',
+    description,
     settings: { synthetic_heart_rate_bpm: 72, synthetic_noise: false },
     channels: channels.map(({ id, fs, firstSampleIndex, samples }) => ({
       id,
@@ -38,49 +48,80 @@ function session(channels: ExportChannel[], markers: Marker[] = []): SavedSessio
   }
 }
 
-const HEADER = [
-  '# ecg-scg-monitor export v1',
-  '# session=session_2026-10-08_15-04-05',
-  '# start_iso=2026-10-08T13:04:00.000Z',
-  '# recorded_at_iso=2026-10-08T13:04:05.000Z',
+// The lines after the format line.
+const SESSION_LINES = [
+  '# Session: session_2026-10-08_15-04-05',
+  `# Recorded: ${localDateTime(RECORDED_ISO)}`,
+  `# Acquisition started: ${localDateTime(START_ISO)} = sample_index 0`,
 ]
-const SOURCE_LINES = [
-  '# source=synthetic',
-  '# description=Synthetic ECG + SCG',
-  '# synthetic_heart_rate_bpm=72',
-  '# synthetic_noise=false',
+const COLUMN_LINES = [
+  '#',
+  '# Columns:',
+  '#   sample_index = sample number since the acquisition started (the number the app shows for a marker)',
+  '#   time_s = seconds since the start of this recording',
+  '#   ecg_V = ECG in volts exactly as received (not filtered or resampled by the app) - empty cell = missing sample',
+  '#   scg_V = SCG in volts exactly as received (not filtered or resampled by the app) - empty cell = missing sample',
+  "#   marker = label of the marker placed on this sample ('|' between several)",
 ]
 
 describe('buildCsvExport', () => {
-  it('writes one file when every channel has the same fs (exact text)', () => {
-    const channels = [
-      channel('ecg', 10, 3, [1.5, NaN, 0.25]),
-      channel('scg', 10, 3, [-0.001, 0.02, 3e-7]),
-    ]
-    const markers: Marker[] = [{ channel: 'ecg', sampleIndex: 4, label: 'stand up, left' }]
+  const sameFs = [
+    channel('ecg', 10, 3, [1.5, NaN, 0.25]),
+    channel('scg', 10, 3, [-0.001, 0.02, 3e-7]),
+  ]
+  const markers: Marker[] = [{ channel: 'ecg', sampleIndex: 4, label: 'stand up, left' }]
 
-    const files = buildCsvExport(session(channels, markers), channels)
+  it('writes one standard file when every channel has the same fs (exact text)', () => {
+    const files = buildCsvExport(session(sameFs, markers), sameFs)
 
     expect(files).toHaveLength(1)
     expect(files[0].fileName).toBe('session_2026-10-08_15-04-05.csv')
     expect(textOf(files[0])).toBe(
       [
-        ...HEADER,
-        '# fs=10',
-        ...SOURCE_LINES,
+        BOM +
+          '# ECG/SCG Monitor export - format v2 - standard CSV (comma separator and point decimals)',
+        ...SESSION_LINES,
+        '# Duration (s): 0.300',
+        '# Sampling rate (Hz): 10',
+        '# Source: synthetic',
+        '# Source details: Synthetic ECG + SCG',
+        '# Markers: 1',
+        '# synthetic_heart_rate_bpm: 72',
+        '# synthetic_noise: false',
+        ...COLUMN_LINES,
+        "# Python: pandas.read_csv with comment='#'",
         'sample_index,time_s,ecg_V,scg_V,marker',
-        '3,0.300000,1.5,-0.001,',
-        '4,0.400000,,0.02,"stand up, left"', // NaN = empty cell; the comma forces quotes
-        '5,0.500000,0.25,3e-7,',
+        '3,0.000000,1.5,-0.001,', // time_s starts at 0 at Record, sample_index stays the live one
+        '4,0.100000,,0.02,"stand up, left"', // NaN = empty cell; the comma forces quotes
+        '5,0.200000,0.25,3e-7,',
         '',
       ].join('\n'),
     )
   })
 
-  it('puts ECG before SCG and keeps the session sample index (no re-basing)', () => {
+  it('never puts "," or ";" in a header line, so Excel keeps each line in one cell (any language)', () => {
+    const channels = [channel('ecg', 10, 0, [1]), channel('scg', 10, 0, [2])]
+    const odd = session(channels, markers, 'a, b; c')
+    const lines = textOf(buildCsvExport(odd, channels)[0]).split('\n')
+    const header = lines.slice(
+      0,
+      lines.findIndex((line) => line.startsWith('sample_index')),
+    )
+    expect(header.length).toBeGreaterThan(15)
+    expect(header.filter((line) => /[,;]/.test(line))).toEqual([])
+  })
+
+  it('keeps one header line per cell: no line break, "," or ";" in free text', () => {
+    const channels = [channel('ecg', 10, 0, [1])]
+    const description = 'ecg_subject02 · 3000 Hz · 237,000 samples;\nloop'
+    const text = textOf(buildCsvExport(session(channels, [], description), channels)[0])
+    expect(text).toContain('\n# Source details: ecg_subject02 · 3000 Hz · 237 000 samples loop\n')
+  })
+
+  it('puts ECG before SCG, keeps the live sample index and starts time_s at 0', () => {
     const channels = [channel('scg', 3000, 141000, [0.1]), channel('ecg', 3000, 141000, [1.6])]
     const text = textOf(buildCsvExport(session(channels), channels)[0])
-    expect(text).toContain('sample_index,time_s,ecg_V,scg_V,marker\n141000,47.000000,1.6,0.1,\n')
+    expect(text).toContain('sample_index,time_s,ecg_V,scg_V,marker\n141000,0.000000,1.6,0.1,\n')
   })
 
   it('leaves empty cells where a channel has no sample (channels starting at different indices)', () => {
@@ -95,9 +136,9 @@ describe('buildCsvExport', () => {
       channel('scg', 3000, 60, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
     ]
     // On SCG (the reference channel: highest fs) at sample 61 = 20.33 ms → ECG sample round(10.17) = 10.
-    const markers: Marker[] = [{ channel: 'scg', sampleIndex: 61, label: 'deep breath' }]
+    const deepBreath: Marker[] = [{ channel: 'scg', sampleIndex: 61, label: 'deep breath' }]
 
-    const files = buildCsvExport(session(channels, markers), channels)
+    const files = buildCsvExport(session(channels, deepBreath), channels)
 
     expect(files.map((f) => f.fileName)).toEqual([
       'session_2026-10-08_15-04-05_ecg.csv',
@@ -105,30 +146,40 @@ describe('buildCsvExport', () => {
     ])
     const ecg = textOf(files[0])
     const scg = textOf(files[1])
-    expect(ecg).toContain('# fs=500\n')
+    expect(ecg).toContain('\n# Sampling rate (Hz): 500\n')
     expect(ecg).toContain(
-      'sample_index,time_s,ecg_V,marker\n10,0.020000,1,deep breath\n11,0.022000,2,\n',
+      'sample_index,time_s,ecg_V,marker\n10,0.000000,1,deep breath\n11,0.002000,2,\n',
     )
-    expect(scg).toContain('# fs=3000\n')
-    expect(scg).toContain('sample_index,time_s,scg_V,marker\n')
-    expect(scg).toContain('\n61,0.020333,0,deep breath\n')
+    expect(ecg).not.toContain('scg_V')
+    expect(scg).toContain('\n# Sampling rate (Hz): 3000\n')
+    expect(scg).toContain('sample_index,time_s,scg_V,marker\n60,0.000000,0,\n')
+    expect(scg).toContain('\n61,0.000333,0,deep breath\n')
+  })
+
+  it('uses the same zero for both files: the first recorded sample of any channel', () => {
+    // SCG starts recording at 20 ms (sample 60 at 3000 Hz), ECG at 22 ms (sample 11 at 500 Hz).
+    const channels = [channel('ecg', 500, 11, [1]), channel('scg', 3000, 60, [0])]
+    const [ecg, scg] = buildCsvExport(session(channels), channels)
+    expect(dataRows(ecg)[0]).toBe('11,0.002000,1,')
+    expect(dataRows(scg)[0]).toBe('60,0.000000,0,')
   })
 
   it('adds empty rows up to a marker placed after the last sample', () => {
     const channels = [channel('ecg', 10, 0, [1])]
-    const markers: Marker[] = [{ channel: 'ecg', sampleIndex: 2, label: 'end' }]
-    const rows = textOf(buildCsvExport(session(channels, markers), channels)[0]).split('\n')
+    const end: Marker[] = [{ channel: 'ecg', sampleIndex: 2, label: 'end' }]
+    const rows = textOf(buildCsvExport(session(channels, end), channels)[0]).split('\n')
     expect(rows.slice(-4)).toEqual(['0,0.000000,1,', '1,0.100000,,', '2,0.200000,,end', ''])
   })
 
   it('joins several markers on the same sample', () => {
     const channels = [channel('ecg', 10, 0, [1])]
-    const markers: Marker[] = [
+    const two: Marker[] = [
       { channel: 'ecg', sampleIndex: 0, label: 'rest' },
       { channel: 'ecg', sampleIndex: 0, label: 'movement' },
     ]
-    const text = textOf(buildCsvExport(session(channels, markers), channels)[0])
+    const text = textOf(buildCsvExport(session(channels, two), channels)[0])
     expect(text).toContain('\n0,0.000000,1,rest | movement\n')
+    expect(text).toContain('\n# Markers: 2\n')
   })
 
   it('builds a long session in parts of 5,000 rows, only when they are read', () => {
@@ -136,7 +187,10 @@ describe('buildCsvExport', () => {
     const channels = [channel('ecg', 1000, 0, values)]
     const parts = buildCsvExport(session(channels), channels)[0].parts[Symbol.iterator]()
 
-    expect(parts.next().value).toMatch(/^# ecg-scg-monitor export v1\n[^]*marker\n$/) // the header alone
+    // The header alone.
+    const header = parts.next().value as string
+    expect(header.startsWith(`${BOM}# ECG/SCG Monitor export - format v2 - `)).toBe(true)
+    expect(header.endsWith('marker\n')).toBe(true)
     const second = parts.next().value as string
     expect(second.split('\n')).toHaveLength(5_001) // 5,000 rows + the final line break
     expect(second.startsWith('0,0.000000,0,\n')).toBe(true)
@@ -161,38 +215,15 @@ describe('buildCsvExport', () => {
   })
 })
 
-describe('formatSample', () => {
-  it('writes the shortest text, empty for a missing sample', () => {
-    expect(formatSample(Math.fround(1.605213))).toBe('1.605213')
-    expect(formatSample(Math.fround(0.02226))).toBe('0.02226')
-    expect(formatSample(Math.fround(1.6))).toBe('1.6')
-    expect(formatSample(Math.fround(-120))).toBe('-120')
-    expect(formatSample(Math.fround(2.5e-7))).toBe('2.5e-7')
-    expect(formatSample(0)).toBe('0')
-    expect(formatSample(NaN)).toBe('')
-  })
-
-  it('reads back to exactly the same Float32 value (raw is sacred)', () => {
-    // Deterministic pseudo-random values over many magnitudes, like ADC readings in volts.
-    let seed = 12345
-    const random = () => {
-      seed = (seed * 1103515245 + 12345) % 2147483648
-      return seed / 2147483648
-    }
-    for (let i = 0; i < 20_000; i++) {
-      const value = Math.fround((random() - 0.5) * 10 ** Math.floor(random() * 12 - 9))
-      const text = formatSample(value)
-      expect(Math.fround(Number(text))).toBe(value)
-      expect(text.replace(/^-|e.*$|\./g, '').replace(/^0+/, '').length).toBeLessThanOrEqual(9)
-    }
-  })
-})
-
 describe('csvField', () => {
-  it('quotes text with a separator, a quote or a comment character, and doubles quotes', () => {
+  it('quotes text with the separator, a quote or a comment character, and doubles quotes', () => {
     expect(csvField('stand up')).toBe('stand up')
     expect(csvField('a, b')).toBe('"a, b"')
     expect(csvField('say "go"')).toBe('"say ""go"""')
     expect(csvField('trial #2')).toBe('"trial #2"')
+  })
+
+  it('does not quote ";" (the separator is ",")', () => {
+    expect(csvField('a; b')).toBe('a; b')
   })
 })

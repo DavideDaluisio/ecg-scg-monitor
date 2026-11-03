@@ -14,7 +14,7 @@ const validEntry = {
 describe('parseManifest', () => {
   it('reads valid entries and marks local ones', () => {
     expect(parseManifest({ recordings: [validEntry] }, true)).toEqual([
-      { ...validEntry, isLocal: true },
+      { ...validEntry, column: null, isLocal: true },
     ])
   })
 
@@ -35,6 +35,19 @@ describe('parseManifest', () => {
     warn.mockRestore()
   })
 
+  it('reads the column letter of a multi-channel .lvm file', () => {
+    const entry = { ...validEntry, file: 'local/ecg_scg.lvm', column: 'D' }
+    expect(parseManifest({ recordings: [entry] }, true)[0].column).toBe('D')
+  })
+
+  it('skips an entry whose column is not uppercase letters', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    for (const column of ['d', '4', 'B2', '', 3]) {
+      expect(parseManifest({ recordings: [{ ...validEntry, column }] }, false)).toEqual([])
+    }
+    warn.mockRestore()
+  })
+
   it('defaults simultaneousWith to null', () => {
     const { simultaneousWith: _, ...withoutField } = validEntry
     expect(parseManifest({ recordings: [withoutField] }, false)[0].simultaneousWith).toBeNull()
@@ -45,6 +58,7 @@ describe('areSimultaneous', () => {
   const entry = (id: string, simultaneousWith: string | null): RecordingEntry => ({
     id,
     file: `${id}.csv`,
+    column: null,
     channel: 'ecg',
     fs: 3000,
     samples: 3000,

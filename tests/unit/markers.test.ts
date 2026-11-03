@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { cleanMarkerLabel, referenceChannel } from '../../src/recording/markers.ts'
+import {
+  addCustomMarkerType,
+  cleanMarkerLabel,
+  markerRecordingTimeS,
+  recordingZeroSeconds,
+  referenceChannel,
+  removeCustomMarkerType,
+} from '../../src/recording/markers.ts'
 import { savedSessionName } from '../../src/recording/sessionName.ts'
 import { formatDuration } from '../../src/ui/formatDuration.ts'
 
@@ -32,6 +39,47 @@ describe('cleanMarkerLabel', () => {
   it('removes line breaks and surrounding spaces', () => {
     expect(cleanMarkerLabel('  stand\nup \r\n')).toBe('stand up')
     expect(cleanMarkerLabel('   ')).toBe('')
+  })
+})
+
+describe('recording time of a marker', () => {
+  // Record pressed while SCG was at sample 60 (20 ms at 3000 Hz) and ECG at sample 11 (22 ms at 500 Hz).
+  const channels = [
+    { id: 'ecg' as const, fs: 500, firstSampleIndex: 11 },
+    { id: 'scg' as const, fs: 3000, firstSampleIndex: 60 },
+  ]
+
+  it('starts at the first recorded sample of any channel', () => {
+    expect(recordingZeroSeconds(channels)).toBe(0.02)
+    expect(recordingZeroSeconds([])).toBe(0)
+  })
+
+  it('is the seconds from that instant to the marker (the time_s of the export)', () => {
+    expect(
+      markerRecordingTimeS(channels, { channel: 'scg', sampleIndex: 3060, label: 'a' }),
+    ).toBeCloseTo(1, 12)
+    expect(
+      markerRecordingTimeS(channels, { channel: 'ecg', sampleIndex: 11, label: 'b' }),
+    ).toBeCloseTo(0.002, 12)
+  })
+
+  it('is NaN for a channel that was not recorded', () => {
+    const ecgOnly = [channels[0]]
+    expect(markerRecordingTimeS(ecgOnly, { channel: 'scg', sampleIndex: 0, label: 'c' })).toBeNaN()
+  })
+})
+
+describe('custom marker types', () => {
+  it('adds a cleaned name at the end, never a duplicate, a preset or an empty name', () => {
+    expect(addCustomMarkerType([], ' walking\n fast ')).toEqual(['walking fast'])
+    expect(addCustomMarkerType(['walking'], 'WALKING')).toEqual(['walking'])
+    expect(addCustomMarkerType(['walking'], 'Deep breath')).toEqual(['walking'])
+    expect(addCustomMarkerType(['walking'], '   ')).toEqual(['walking'])
+    expect(addCustomMarkerType(['walking'], 'cough')).toEqual(['walking', 'cough'])
+  })
+
+  it('removes a name', () => {
+    expect(removeCustomMarkerType(['walking', 'cough'], 'walking')).toEqual(['cough'])
   })
 })
 

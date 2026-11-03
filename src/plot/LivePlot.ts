@@ -48,7 +48,7 @@ export class LivePlot {
   private lastBuffer: RingBuffer | null = null
   private lastEndIndex = -1
   private lastWindowStartS = -1
-  private lastMarkerCount = -1
+  private lastMarkersVersion = -1
 
   constructor(container: HTMLElement, options: LivePlotOptions) {
     // Created before the chart, because uPlot may call the cursor hook while it starts.
@@ -110,6 +110,7 @@ export class LivePlot {
     windowStartS: number,
     windowSeconds: number,
     markers: readonly PlotMarker[],
+    markersVersion: number, // changes when a marker is added, renamed or cleared
   ): void {
     const windowSamples = Math.round(windowSeconds * fs)
     // Plot area width in CSS pixels (bbox is in canvas pixels): one min/max bucket per pixel.
@@ -129,13 +130,13 @@ export class LivePlot {
     if (
       buffer.endIndex === this.lastEndIndex &&
       windowStartS === this.lastWindowStartS &&
-      markers.length === this.lastMarkerCount
+      markersVersion === this.lastMarkersVersion
     ) {
       return
     }
     this.lastEndIndex = buffer.endIndex
     this.lastWindowStartS = windowStartS
-    this.lastMarkerCount = markers.length
+    this.lastMarkersVersion = markersVersion
     this.markers = markers
 
     const count = computePlotPoints(

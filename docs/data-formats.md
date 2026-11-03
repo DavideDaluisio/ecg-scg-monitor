@@ -16,8 +16,14 @@ Real ECG/SCG recordings are **personal health data**. The GitHub Pages site is p
 | -------------------------------------- | ------- | ------------------------- | ------- | -------- | -------------------------- | ----------------- |
 | `ecg_subject01` (`.lvm`)               | ECG     | 3000 Hz (Δt = 0.000333 s) | 72,000  | 24.0 s   | V, DC offset ≈ 1.6 V       | –                 |
 | `scg_subject01` (`.csv`, from `.xlsx`) | SCG     | 3000 Hz (Δt = 0.000333 s) | 28,000  | 9.33 s   | V, ≈ ±0.1 V, zero-centered | –                 |
+| `ecg_subject02` (column B)             | ECG     | 3000 Hz (Δt = 0.000333 s) | 237,000 | 79.0 s   | V, 0 … 3.05 V, DC ≈ 1.57 V | `scg_subject02`   |
+| `scg_subject02` (column D)             | SCG     | 3000 Hz (Δt = 0.000333 s) | 237,000 | 79.0 s   | V, ±0.7 V, zero-centered   | `ecg_subject02`   |
 
-The two recordings were **not** made at the same time: they cannot be used to measure ECG→SCG timing.
+`ecg_subject01` and `scg_subject01` were **not** made at the same time: they cannot be used to measure ECG→SCG
+timing. `ecg_subject02` and `scg_subject02` are two columns of **one** 4-channel LabVIEW file
+(`local/ecg_scg_subject02.lvm`, one shared time base): they were recorded together. Its SCG column is titled
+`Voltage_1 (Filtered)` (filtered by the acquisition software, not by the app); columns F and H (`Voltage_2`,
+`Voltage_3`) are flat at ≈ 2.33 V and not used (see Q9 in `docs/questions-for-team.md`).
 
 ## Manifests (`public/samples/manifest.json`, `public/samples/local/manifest.json`)
 
@@ -42,6 +48,9 @@ When it is missing on the dev server, the app ignores it.
 ```
 
 - `file` is relative to `public/samples/` (local files: `local/<id>.<ext>`). `channel` is `ecg` or `scg`.
+- `column` (optional, `.lvm` only): spreadsheet letter of the signal in a multi-channel file, e.g. `"D"`
+  (uppercase letters only). Two entries may use the same file with different columns
+  (`ecg_subject02` → B, `scg_subject02` → D). Omitted or `null` for files with one signal.
 - `fs`, `samples`, `durationS` are informative: the app always computes fs from the file itself.
 - `simultaneousWith`: id of a recording made at the same time, or `null`. Malformed entries are skipped.
 
@@ -63,16 +72,40 @@ Both are 3000 Hz, 30,000 samples (10 s = exactly 12 beats at 72 bpm, so they loo
 extensions fail with a clear message. The channel never comes from the file: manifest entries have `channel`, and
 files opened from disk get it from the button the user pressed ("Open ECG file…" / "Open SCG file…").
 
+For a multi-channel `.lvm` opened from disk, the app reads only its header (first 64 kB) and shows an
+"ECG column" / "SCG column" select (`B · Voltage_0`, `D · Voltage_1 (Filtered)`, …). There is **no default**:
+Start without a choice fails with the list of columns. Opening the same file for both channels with two different
+columns counts as simultaneous (same name, size and modification time), so no "not simultaneous" note.
+
 ## LabVIEW `.lvm` (input)
 
 - Text, tab-separated, `.` as decimal separator.
 - A file header ends with `***End_of_Header***`. Then a segment header (`Channels`, `Samples`, `Date`, `Time`,
   `Y_Unit_Label`, `X0`, `Delta_X`) ends with another `***End_of_Header***`, followed by the column line
   `X_Value<TAB>Voltage_0<TAB>Comment` and the data rows `time<TAB>value`.
-- **Known quirk:** the lab ECG file says `Samples 1000` but contains 72,000 rows. Count the rows, do not trust `Samples`.
+- **Known quirk:** the lab files say `Samples 1000` but contain many more rows (72,000, 237,000). Count the rows, do
+  not trust `Samples`.
 - **fs from the time column, not from `Delta_X`:** `0.000333` is a truncated 1/3000, and `1 / 0.000333` = 3003 Hz (wrong).
   Use `fs = round((n − 1) / (t_last − t_first))` over all rows (= 3000 for the lab files). Same rule for CSV and XLSX.
-- Files with several segments or several channels: fail with a clear message (not supported yet).
+- Values may be written in scientific notation (`-2.852704E-5`): read as normal numbers.
+- Files with several segments: fail with a clear message (not supported yet).
+
+### Multi-channel `.lvm` (newer lab files)
+
+```
+Channels  4
+X_Value  Voltage_0  X_Value  Voltage_1 (Filtered)  X_Value  Voltage_2  X_Value  Voltage_3  Comment
+   A         B         C              D                E         F         G         H         I
+```
+
+- `X_Columns Multi`: each signal has its own time column on its left (all equal in the lab file). The layout with
+  one shared time column (`X_Columns One`: `X_Value  Voltage_0  Voltage_1 …`) is read the same way: a signal's time
+  is the **nearest `X_Value` column on its left**.
+- A signal is chosen by its **spreadsheet letter** (the letter seen when the file is opened in Excel): ECG = B,
+  SCG = D in the lab file. Signal columns are those whose title is not `X_Value`, `Comment` or empty.
+- `parseLvm(text, column)`: `column` may be `null` only when the file has one signal (all older files: B).
+  Otherwise, or with a letter that is not a signal (`A`, `C`, `Z`, lowercase), it fails and lists the signals.
+  `listLvmColumns(text)` lists them from the header alone. A file with several channels but no column line fails.
 
 ## CSV (input)
 
@@ -99,59 +132,130 @@ opened. Parser: `src/io/xlsx.ts`.
 
 `scripts/convert-xlsx.mjs` converts an `.xlsx` to the CSV format above for `public/samples/local/`.
 
-## CSV export (v1)
+## Exports of a saved session
 
-Made by `src/io/csvExport.ts` from a saved session (button **Export CSV** in "Saved sessions"). UTF-8, LF line
-endings, `,` separator, `.` decimal separator. When all channels have the same fs, one file `<session>.csv`:
+Two buttons per saved session, same samples and markers in both:
+
+| Button           | File                             | For                                                  | Made by                                                   |
+| ---------------- | -------------------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| **Export Excel** | `<session>.xlsx`                 | people: open with a double-click, any Excel language | `src/io/xlsxExport.ts` + `xlsxXml.ts`, zipped by `zip.ts` |
+| **Export CSV**   | `<session>.csv` (or per channel) | Python, MATLAB, `scripts/check_export.py`            | `src/io/csvExport.ts`                                     |
+
+Common rules (`src/io/exportShared.ts`):
+
+- **Time (s) / `time_s` = seconds since the start of the recording**: 0 on the first recorded sample of any channel
+  (`time = sample_index / fs − min(firstSampleIndex / fs)`), rounded to 1 µs. The same zero in every file and sheet,
+  so the same instant has the same time on the ECG and the SCG. It is the time the app lists for each marker.
+- **Sample index = the live session's index** (from Start), not re-based to 0: a recording started 7.09 s after Start
+  begins at index 21270. Each channel starts recording at its own next sample, so channels may start a few samples
+  apart: those cells are empty.
+- **Values** in volts, written with the shortest decimal that reads back to exactly the same Float32 (lossless: raw
+  is sacred), e.g. `1.605213`, `0.02226`, `-6.5644135e-12`. **Missing samples are empty cells**, never skipped.
+- **Markers** are on the row of their sample. Several markers on one sample share the cell (`rest | movement`).
+  Rows cover every sample and every marker. With **different fs**, a marker goes to `round(t × fs)` on the other
+  channel's clock.
+- **Different fs:** ECG and SCG are never resampled to share rows. The Excel file gets separate sheets per channel,
+  the CSV export one file per channel.
+- Both are built in parts with a pause between parts: exporting while a source runs does not freeze the plots or
+  stop acquisition.
+
+## Excel export (`.xlsx`)
+
+One workbook, opened on the **Info** sheet:
+
+| Sheet       | Content                                                                                                                                                                                                                                         |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Info**    | Field / value: session, recorded (local time), acquisition started (= sample index 0), duration, channels and fs, source and its details, number of markers, synthetic settings, the names of the data sheets, then what each data column means |
+| **Markers** | `# · Time (s) · Time (min:s) · Name · Sample index`, one row per marker in the order they were placed (`No markers in this recording` when there are none). The sample index is on the reference channel (highest fs, ECG if equal)             |
+| **Data**    | `Time (s) · ECG (V) · SCG (V) · Marker · Sample index`, one row per sample                                                                                                                                                                      |
+
+- **Layout:** bold header on grey, frozen (it stays visible while scrolling), column widths set, Time shown with 6
+  decimals (only the display: the cell holds the value), the **whole row of a marker in light yellow**.
+- **Excel's limit:** at most 1,048,576 rows per sheet (≈ 5.8 min at 3 kHz). A longer recording is split into sheets
+  of whole minutes: `Data 0-5 min`, `Data 5-10 min`, …, `Data 10-12.4 min` (5 min per sheet at 3000 Hz, 34 min at
+  500 Hz). Each sheet has its own header; the rows continue without gap or repeat.
+- **Different fs:** `ECG data` and `SCG data` (split as `ECG 0-5 min`, `SCG 0-5 min`… when long), each on its own
+  clock.
+- **Size and time:** 5 min of ECG + SCG at 3000 Hz ≈ 28 MB, built in ≈ 6.5 s on a laptop (Node benchmark) in steps of
+  2,000 rows (≤ 20 ms each). Excel takes a while to open a sheet of 900,000 rows.
+- **How it is written:** plain Office Open XML (SpreadsheetML) text, cells with their reference (`r="B12"`), text as
+  inline strings, numbers written as is; zipped with `fflate` (deflate level 3), loaded only when exporting. SheetJS
+  is not used for the export: its free version writes no bold, colours or frozen panes, and builds the whole
+  workbook in memory.
+- Tests read the file back with SheetJS (`tests/unit/xlsxExport.test.ts`, `tests/e2e/smoke.spec.ts`).
+
+## CSV export (v2)
+
+`<session>.csv`, or `<session>_ecg.csv` and `<session>_scg.csv` when the fs differ (Chrome may ask once to allow
+the two downloads). `,` separator, `.` decimals, UTF-8 with a **byte-order mark**, LF line endings. Synthetic
+session, ECG and SCG at the same fs:
 
 ```
-# ecg-scg-monitor export v1
-# session=session_2026-10-08_15-04-05
-# start_iso=2026-10-08T13:03:58.120Z
-# recorded_at_iso=2026-10-08T13:04:05.210Z
-# fs=3000
-# source=synthetic
-# description=Synthetic ECG + SCG · 72 bpm · R→AO 80 ms · ECG 3000 Hz · SCG 3000 Hz
-# synthetic_heart_rate_bpm=72
-# synthetic_r_to_ao_ms=80
-# synthetic_noise=false
+# ECG/SCG Monitor export - format v2 - standard CSV (comma separator and point decimals)
+# Session: session_2026-10-08_15-04-05
+# Recorded: 2026-10-08 15:04:05 local time (UTC+02:00)
+# Acquisition started: 2026-10-08 15:03:58 local time (UTC+02:00) = sample_index 0
+# Duration (s): 300.000
+# Sampling rate (Hz): 3000
+# Source: synthetic
+# Source details: Synthetic ECG + SCG · 72 bpm · R→AO 80 ms · ECG 3000 Hz · SCG 3000 Hz
+# Markers: 1
+# synthetic_heart_rate_bpm: 72
+# synthetic_r_to_ao_ms: 80
+# synthetic_noise: false
+#
+# Columns:
+#   sample_index = sample number since the acquisition started (the number the app shows for a marker)
+#   time_s = seconds since the start of this recording
+#   ecg_V = ECG in volts exactly as received (not filtered or resampled by the app) - empty cell = missing sample
+#   scg_V = SCG in volts exactly as received (not filtered or resampled by the app) - empty cell = missing sample
+#   marker = label of the marker placed on this sample ('|' between several)
+# Python: pandas.read_csv with comment='#'
 sample_index,time_s,ecg_V,scg_V,marker
-21270,7.090000,0.00017589612,-6.5644135e-12,
-21271,7.090333,0.00017853011,-7.0168e-12,stand up
+21270,0.000000,0.00017589612,-6.5644135e-12,
+21271,0.000333,0.00017853011,-7.0168e-12,stand up
 ```
 
-- **Header:** the first line is always `# ecg-scg-monitor export v1`; then one `# key=value` per line.
-  `start_iso` = wall-clock time of sample index 0 (when Start was pressed), `recorded_at_iso` = when Record was
-  pressed (both informative, ± tens of ms). `source` is `replay` or `synthetic`; a synthetic session adds its
-  settings (`synthetic_*`), used by `scripts/check_export.py`.
-- **`sample_index` is the live session's index** (from Start), not re-based to 0: a recording started 7.09 s after
-  Start begins at index 21270. `time_s = sample_index / fs` (seconds since Start, rounded to 1 µs; use
-  `sample_index / fs` for the exact value). Each channel starts recording at its own next sample, so channels may
-  start a few samples apart: those cells are empty.
-- **Values** in volts, written with the shortest decimal that reads back to exactly the same Float32 (lossless:
-  raw is sacred), e.g. `1.605213`, `0.02226`, `-6.5644135e-12`. **Missing samples are empty cells**, never skipped.
-- **`marker`** is non-empty only on the marked sample. Several markers on one sample share the cell (`rest | movement`).
-  A label containing `,` `"` or `#` is quoted (`"rest, sitting"`, quotes doubled). Rows cover every sample and every
-  marker.
-- When the channels have **different fs**: one file per channel, `<session>_ecg.csv` and `<session>_scg.csv`, each
-  with its own `fs` and `sample_index`. Never resampled. The same instant is `sample_index / fs` in both.
-- Chrome may ask once to allow the two downloads.
-- Excel opens at most 1,048,576 rows (≈ 5.8 min at 3 kHz) and cuts longer files: use Python, pandas or MATLAB.
-- The file is built 5,000 rows at a time, each part stored in its own Blob, with a pause between parts: exporting
-  while a source runs does not freeze the plots or stop acquisition (≈ 2 s for 5 min on a laptop).
+- **Header:** lines starting with `#`, one `# Key: value` per line, then a legend of the columns. The first line
+  always starts with `# ECG/SCG Monitor export - format v2`. Times are the **local time** of the computer that
+  exports, with its UTC offset (informative, ± tens of ms): `Recorded` = when Record was pressed,
+  `Acquisition started` = when Start was pressed (= `sample_index` 0). `Duration (s)` = rows / fs.
+  `Source` is `replay` or `synthetic`; `Source details` is the text shown under the controls (file names of files
+  opened from disk included). A synthetic session adds its settings (`synthetic_*`), used by
+  `scripts/check_export.py`.
+- **No header line contains `,` or `;`**, so Excel keeps each line in one cell of column A whatever the list
+  separator of the computer: free text (`Source details`, settings) has `,` and `;` replaced by a space
+  (`237,000 samples` → `237 000 samples`) and line breaks removed.
+- A marker label containing `,`, `"` or `#` is quoted (`"rest, sitting"`, quotes doubled).
+- Built 5,000 rows at a time, each part stored in its own Blob (≈ 2 s for 5 min on a laptop).
+- For a spreadsheet, use the Excel export: Excel on an Italian computer opens a CSV with `;` and decimal comma, so
+  this file lands in column A.
 
-Reading it: `pandas.read_csv(path, comment='#')` (a quoted `#` in a label is kept), or Python's `csv` module
-skipping the lines that start with `#`. Check an export with `python scripts/check_export.py <file.csv> [<file2.csv>]`
-(standard library only): contiguous `sample_index`, `time_s`, missing samples, markers (and their agreement
-between two files), and for a synthetic session without noise every R and AO peak position.
+Reading it: `pandas.read_csv(path, comment='#')` (a quoted `#` in a label is kept; the byte-order mark is skipped),
+or Python's `csv` module skipping the lines that start with `#` (open with `encoding='utf-8-sig'`). Check an export
+with `python scripts/check_export.py <file.csv> [<file2.csv>]` (standard library only): contiguous `sample_index`,
+`time_s` from 0 with the same zero in both files, missing samples, markers (and their agreement between two files),
+and for a synthetic session without noise every R and AO peak position. Exports of format v1 (before 2026-11-03) are
+not accepted: export the saved session again.
 
 ## Markers
 
 `{ channel, sampleIndex, label }`, placed only while recording, on the **reference channel** (highest fs, ECG if
-equal), on the newest sample received when **Add marker** is clicked (never before the recording start). The app
-shows `Marker "stand up" at 7.0903 s (sample 21271)`: the same index is in the export. In a file with another fs,
-the marker goes to `round(t × fs)` with `t = sampleIndex / fs_reference`. Labels: a preset (placeholder list, see
-Q8 in `docs/questions-for-team.md`) or free text; line breaks are removed; empty = `marker`.
+equal), on the newest sample received when a marker button is clicked (never before the recording start).
+
+- **Placing:** the marker row under the top bar appears only while recording. One button per type (the presets, a
+  placeholder list: see Q8 in `docs/questions-for-team.md`, then the types created by the user), or **+** → any
+  name + Enter (empty = `marker`; Esc cancels).
+  A typed name that is not a preset or already a button becomes a button (case-insensitive), remembered in this
+  browser (`localStorage` key `ecg-scg-monitor.customMarkerTypes`, a JSON list of names); its × removes the button
+  only, never the markers already placed.
+- **Listing:** while recording, **Markers (n)** opens the markers of the recording under the buttons (`# · Time (s) · Name`,
+  time since Record, the same as the exports; the sample index is in the row's tooltip). After the recording, the
+  Markers count of a saved session opens the same list.
+- **Renaming:** **Rename** on a row, in both lists. While recording it goes through the `Recorder` (which rewrites
+  the stored session with every chunk); afterwards `renameSavedMarker()` changes the stored session. The plot label
+  changes too while recording. Labels are cleaned: line breaks removed, spaces trimmed; an empty name changes
+  nothing.
 
 ## Saved sessions (IndexedDB, in the browser)
 
@@ -170,9 +274,10 @@ Database `ecg-scg-monitor` (version 1), managed by `src/recording/db.ts`. It liv
 
 ## Test fixtures (`tests/fixtures/`, committed, synthetic)
 
-| File                | Channel | fs      | Samples     | Content                                                                            |
-| ------------------- | ------- | ------- | ----------- | ---------------------------------------------------------------------------------- |
-| `ecg_synthetic.lvm` | ECG     | 3000 Hz | 6,000 (2 s) | fake PQRST at 72 bpm, 1.6 V offset, same LVM layout incl. the `Samples 1000` quirk |
-| `scg_synthetic.csv` | SCG     | 3000 Hz | 6,000 (2 s) | fake damped 30 Hz bursts 80 ms after each R peak, ≈ ±0.05 V                        |
+| File                        | Channel   | fs      | Samples     | Content                                                                                                |
+| --------------------------- | --------- | ------- | ----------- | ------------------------------------------------------------------------------------------------------ |
+| `ecg_synthetic.lvm`         | ECG       | 3000 Hz | 6,000 (2 s) | fake PQRST at 72 bpm, 1.6 V offset, same LVM layout incl. the `Samples 1000` quirk                     |
+| `scg_synthetic.csv`         | SCG       | 3000 Hz | 6,000 (2 s) | fake damped 30 Hz bursts 80 ms after each R peak, ≈ ±0.05 V                                            |
+| `ecg_scg_synthetic_4ch.lvm` | ECG + SCG | 3000 Hz | 6,000 (2 s) | the two signals above in the 4-channel layout of the newer lab files: ECG in B, SCG in D, flat F and H |
 
 Regenerate with `npm run fixtures` (deterministic).

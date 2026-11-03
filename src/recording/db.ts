@@ -60,6 +60,27 @@ export async function saveSessionMeta(db: MonitorDb, session: SavedSession): Pro
   await db.put('sessions', session)
 }
 
+/**
+ * Changes the label of one marker of a saved session that is no longer recording (while recording, use
+ * `Recorder.renameMarker`). Read and written in one transaction, so nothing else changes the session in between.
+ */
+export async function renameSavedMarker(
+  db: MonitorDb,
+  sessionId: number,
+  markerIndex: number,
+  label: string,
+): Promise<void> {
+  const tx = db.transaction('sessions', 'readwrite')
+  const session = await tx.store.get(sessionId)
+  const marker = session?.markers[markerIndex]
+  if (session === undefined || marker === undefined) {
+    throw new Error(`marker ${markerIndex + 1} of session ${sessionId} not found`)
+  }
+  marker.label = label
+  await tx.store.put(session)
+  await tx.done
+}
+
 /** All saved sessions, newest first. */
 export async function listSavedSessions(db: MonitorDb): Promise<SavedSession[]> {
   const sessions = await db.getAll('sessions')

@@ -8,6 +8,7 @@ import {
   listSavedSessions,
   loadChannelSamples,
   openMonitorDb,
+  renameSavedMarker,
   saveChunk,
   type MonitorDb,
 } from '../../src/recording/db.ts'
@@ -129,7 +130,51 @@ describe('saved sessions in IndexedDB', () => {
   })
 })
 
+describe('renameSavedMarker', () => {
+  it('changes the label of one marker of a saved session, nothing else', async () => {
+    const db = await freshDb()
+    const id = await createSavedSession(db, {
+      ...draft([{ id: 'ecg', fs: 10, first: 0 }]),
+      markers: [
+        { channel: 'ecg', sampleIndex: 2, label: 'stand up' },
+        { channel: 'ecg', sampleIndex: 5, label: 'stand up' },
+      ],
+      status: 'complete',
+    })
+
+    await renameSavedMarker(db, id, 1, 'stand up after 3 min rest')
+
+    const [session] = await listSavedSessions(db)
+    expect(session.markers).toEqual([
+      { channel: 'ecg', sampleIndex: 2, label: 'stand up' },
+      { channel: 'ecg', sampleIndex: 5, label: 'stand up after 3 min rest' },
+    ])
+    await expect(renameSavedMarker(db, id, 2, 'x')).rejects.toThrow(/marker 3 .* not found/)
+  })
+})
+
 describe('Recorder', () => {
+  it('renames a marker while recording, and later chunks do not bring the old name back', async () => {
+    const db = await freshDb()
+    const recorder = new Recorder({
+      db: Promise.resolve(db),
+      draft: draft([{ id: 'ecg', fs: 10, first: 0 }]),
+      onError: () => {},
+      chunkSeconds: 0.2, // 2 samples per chunk
+    })
+    recorder.push(block('ecg', 0, [1, 2]))
+    recorder.addMarker({ channel: 'ecg', sampleIndex: 1, label: 'rest' })
+    recorder.addMarker({ channel: 'ecg', sampleIndex: 2, label: 'movement' })
+    recorder.renameMarker(0, 'rest, eyes closed')
+    recorder.renameMarker(7, 'no such marker') // ignored
+    recorder.push(block('ecg', 2, [3, 4, 5, 6])) // two more chunks rewrite the session
+    await recorder.finish()
+
+    const [session] = await listSavedSessions(db)
+    expect(session.markers.map((m) => m.label)).toEqual(['rest, eyes closed', 'movement'])
+    expect(session.channels[0].sampleCount).toBe(6)
+  })
+
   it('saves the blocks from the start index on, with markers, and completes the session', async () => {
     const db = await freshDb()
     const recorder = new Recorder({

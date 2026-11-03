@@ -17,6 +17,19 @@ describe('parseRecording', () => {
     expect(samples).toHaveLength(6000)
   })
 
+  it('passes the column letter to the LVM parser (4-channel file)', async () => {
+    const data = fixtureBytes('ecg_scg_synthetic_4ch.lvm')
+    const ecg = await parseRecording('ecg_scg_synthetic_4ch.lvm', data, 'B')
+    const scg = await parseRecording('ecg_scg_synthetic_4ch.lvm', data, 'D')
+    expect(ecg.samples[0]).toBeCloseTo(1.6, 6)
+    expect(scg.samples[0]).toBe(0)
+  })
+
+  it('refuses a column for .csv and .xlsx files (they hold one signal)', async () => {
+    const data = fixtureBytes('scg_synthetic.csv')
+    await expect(parseRecording('scg.csv', data, 'B')).rejects.toThrow(/only in \.lvm files/)
+  })
+
   it('reads .csv files with the CSV parser, whatever the case of the extension', async () => {
     const { fs, samples } = await parseRecording(
       'SCG_SYNTHETIC.CSV',

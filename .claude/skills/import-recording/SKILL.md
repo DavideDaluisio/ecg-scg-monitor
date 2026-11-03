@@ -12,11 +12,13 @@ Real recordings are personal health data. They go **only** in `public/samples/lo
 2. Choose a **neutral id**: `<channel>_subjectNN` (e.g. `ecg_subject02`). Never use the person's name,
    the operator or the date from the file.
 3. Copy or convert into `public/samples/local/`:
-   - `.lvm` → copy as `<id>.lvm`.
+   - `.lvm` → copy as `<id>.lvm`. A multi-channel `.lvm` with ECG and SCG (e.g. ECG in column B, SCG in column D)
+     is copied once as `ecg_scg_subjectNN.lvm` and gets two manifest entries with `"column": "B"` / `"column": "D"`.
    - `.xlsx` → `node scripts/convert-xlsx.mjs <input.xlsx> public/samples/local/<id>.csv <channel>`.
    - `.csv` → make sure the header is `time_s,<channel>_V`.
 4. Add an entry to `public/samples/local/manifest.json`:
-   `{ "id", "file", "channel", "fs", "samples", "durationS", "simultaneousWith": null }`.
+   `{ "id", "file", "channel", "fs", "samples", "durationS", "simultaneousWith": null }`
+   (plus `"column": "<letter>"` for a multi-channel `.lvm`; two columns of one file are `simultaneousWith` each other).
 5. Add a row to the "Local recordings" table in `docs/data-formats.md` (no personal data).
 6. Check with `git status` that **nothing** under `public/samples/local/` is staged except `README.md`.
 7. If the recording is ECG + SCG recorded **at the same time**, say so to the user: it answers open question #5

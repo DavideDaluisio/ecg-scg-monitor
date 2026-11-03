@@ -30,3 +30,6 @@ public/samples/local/*
 # Test output
 test-results
 playwright-report
+
+# Python bytecode (scripts/check_export.py)
+__pycache__/

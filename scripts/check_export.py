@@ -4,9 +4,13 @@ Usage:
     python scripts/check_export.py session_2026-10-08_15-04-05.csv
     python scripts/check_export.py session_..._ecg.csv session_..._scg.csv    (channels with different fs)
 
+Reads format v2 (',' separator and '.' decimals). The Excel export (.xlsx) is for people: check the CSV export of
+the same session, it has the same values.
 For every file it checks the format line, the header, that sample_index has no gap or repeat, that
-time_s = sample_index / fs, and that every value is a number or empty (= missing sample). It lists the markers.
-With two files, the markers must be the same in both, at round(t * fs) of each file.
+time_s = sample_index / fs - (start of the recording), the same offset on every row and starting at 0, and that every
+value is a number or empty (= missing sample). It lists the markers.
+With two files, the markers must be the same in both, at round(t * fs) of each file, and time_s must have the same
+zero in both.
 For a synthetic session without noise, over the whole file (peaks are measured to a fraction of a sample):
   - every SCG AO peak must be at R + delay, R = 0.3 + k * 60 / HR seconds, within a quarter of a sample;
   - every ECG R peak must be within 1.5 samples of R, and at the same offset on every beat. (The R peak is pulled a
@@ -14,7 +18,7 @@ For a synthetic session without noise, over the whole file (peaks are measured t
 One dropped or repeated sample moves the following peaks by a whole sample and fails these checks.
 
 Standard library only (no numpy needed). Exit code 0 = OK, 1 = FAIL.
-To load an export in your own code: pandas.read_csv(path, comment='#').
+To load an export in your own code: pandas.read_csv(path, comment='#')
 """
 
 import argparse
@@ -23,9 +27,9 @@ import math
 import sys
 from array import array
 
-FORMAT_LINE = "# ecg-scg-monitor export v1"
+FORMAT_LINE = "# ECG/SCG Monitor export - format v2"  # the first line starts with this
 MARKER_SEPARATOR = " | "  # several markers on the same sample share one cell
-TIME_TOLERANCE_S = 5.01e-7  # time_s is written with 6 decimals
+TIME_TOLERANCE_S = 1.01e-6  # time_s is written with 6 decimals, and compared with the offset of another row
 MAX_PROBLEMS_SHOWN = 10
 
 # The synthetic model of the app (src/sources/syntheticSignals.ts).
@@ -46,8 +50,9 @@ class Export:
 
     def __init__(self, path):
         self.path = path
-        self.header = {}  # "# key=value" lines
+        self.header = {}  # "# Key: value" lines
         self.fs = 0.0
+        self.zero_s = 0.0  # sample_index / fs - time_s: where time_s = 0 is on the session clock (Record)
         self.first_index = 0
         self.rows = 0
         self.values = {}  # column name (e.g. "ecg_V") -> array of floats, NaN = missing
@@ -63,13 +68,15 @@ def read_export(path, problems):
     def problem(message):
         problems.append(f"{path}: {message}")
 
+    # utf-8-sig skips the byte-order mark written for Excel.
     with open(path, newline="", encoding="utf-8-sig") as file:
-        if file.readline().rstrip("\r\n") != FORMAT_LINE:
-            problem(f'the first line is not "{FORMAT_LINE}"')
+        if not file.readline().startswith(FORMAT_LINE):
+            problem(f'the first line does not start with "{FORMAT_LINE}" (an export of an older version?)')
         line = file.readline()
         while line.startswith("#"):
-            key, _, value = line[1:].strip().partition("=")
-            export.header[key] = value
+            key, separator, value = line[1:].strip().partition(": ")
+            if separator:
+                export.header[key] = value
             line = file.readline()
 
         columns = next(csv.reader([line]))
@@ -77,9 +84,12 @@ def read_export(path, problems):
         if columns[:2] != ["sample_index", "time_s"] or columns[-1] != "marker" or not value_columns:
             problem(f"unexpected columns {columns}")
             return export
-        export.fs = float(export.header.get("fs", "nan"))
+        try:
+            export.fs = float(export.header.get("Sampling rate (Hz)", "nan"))
+        except ValueError:
+            export.fs = math.nan
         if not export.fs > 0:
-            problem("no valid fs in the header")
+            problem('no valid "Sampling rate (Hz)" in the header')
             return export
         for name in value_columns:
             export.values[name] = array("d")
@@ -93,14 +103,17 @@ def read_export(path, problems):
                 problem(f"row {row[:2]} has {len(row)} cells instead of {len(columns)}")
                 return export
             index = int(row[0])
+            offset_s = index / export.fs - float(row[1])
             if expected_index is None:
                 export.first_index = expected_index = index
+                export.zero_s = offset_s
             if index != expected_index and shown < MAX_PROBLEMS_SHOWN:
                 problem(f"sample_index {index} where {expected_index} was expected (gap or repeat)")
                 shown += 1
             expected_index = index + 1
-            if abs(float(row[1]) - index / export.fs) > TIME_TOLERANCE_S and shown < MAX_PROBLEMS_SHOWN:
-                problem(f"time_s {row[1]} is not sample_index / fs = {index / export.fs:.6f}")
+            if abs(offset_s - export.zero_s) > TIME_TOLERANCE_S and shown < MAX_PROBLEMS_SHOWN:
+                expected_time = index / export.fs - export.zero_s
+                problem(f"time_s {row[1]} where {expected_time:.6f} was expected (sample_index / fs - start)")
                 shown += 1
             for name, cell in zip(value_columns, row[2:-1]):
                 export.values[name].append(float(cell) if cell != "" else math.nan)
@@ -114,18 +127,34 @@ def read_export(path, problems):
 def print_summary(export):
     print(export.path)
     duration = export.rows / export.fs if export.fs else 0
+    print(f"  recorded {export.header.get('Recorded', '?')}")
     print(
         f"  fs {export.fs:g} Hz, {export.rows:,} rows, sample_index {export.first_index:,} .. "
-        f"{export.end_index() - 1:,} ({duration:.3f} s, t = {export.first_index / export.fs:.3f} .. "
-        f"{export.end_index() / export.fs:.3f} s)"
+        f"{export.end_index() - 1:,} ({duration:.3f} s; recording started at "
+        f"t = {export.zero_s:.3f} s after Start)"
     )
-    print(f"  source: {export.header.get('source', '?')} - {export.header.get('description', '')}")
+    print(f"  source: {export.header.get('Source', '?')} - {export.header.get('Source details', '')}")
     for name, values in export.values.items():
         missing = sum(1 for v in values if math.isnan(v))
         print(f"  {name}: {missing:,} missing samples")
     print(f"  markers: {len(export.markers)}")
     for index, label in export.markers:
-        print(f"    sample {index:,}  t = {index / export.fs:.4f} s  {label}")
+        print(f"    sample {index:,}  time_s = {index / export.fs - export.zero_s:.4f} s  {label}")
+
+
+def check_time_zero(exports, problems):
+    """time_s starts at 0 (the start of the recording), with the same zero in every file of the export."""
+    first = min(exports, key=lambda e: e.first_index / e.fs - e.zero_s)
+    first_time_s = first.first_index / first.fs - first.zero_s
+    # A marker moved to another fs by round(t * fs) may sit up to half a sample before the zero.
+    if abs(first_time_s) > 0.5 / first.fs + TIME_TOLERANCE_S:
+        problems.append(f"{first.path}: the first time_s is {first_time_s:.6f}, not 0")
+    for other in exports:
+        if abs(other.zero_s - first.zero_s) > TIME_TOLERANCE_S:
+            problems.append(
+                f"time_s has another zero in {other.path} ({other.zero_s:.6f} s after Start) than in "
+                f"{first.path} ({first.zero_s:.6f} s)"
+            )
 
 
 def check_markers_agree(exports, problems):
@@ -177,7 +206,7 @@ def peak_index(export, values, center_s):
 
 def check_synthetic_peaks(exports, problems):
     header = exports[0].header
-    if header.get("source") != "synthetic":
+    if header.get("Source") != "synthetic":
         print("Peak check skipped: not a synthetic session (no known signal shape).")
         return
     if header.get("synthetic_noise") == "true":
@@ -257,6 +286,7 @@ def main():
     if len(exports) > 1:
         check_markers_agree(exports, problems)
     if all(e.rows > 0 for e in exports):
+        check_time_zero(exports, problems)
         check_synthetic_peaks(exports, problems)
     else:
         problems.append("a file has no data rows")

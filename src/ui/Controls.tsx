@@ -1,10 +1,12 @@
 import { startReplay, startSynthetic, stopSession } from '../state/session.ts'
 import { getReplayInputs, useAppStore, type WindowSeconds } from '../state/store.ts'
-import { RecordControls } from './RecordControls.tsx'
-import { SourcePicker } from './SourcePicker.tsx'
+import { PauseIcon, PlayIcon, StopIcon } from './icons.tsx'
 
-// Source choice, Start / Pause / Stop, the length of the visible window, then recording and markers.
-export function Controls() {
+const WINDOW_CHOICES: WindowSeconds[] = [5, 10]
+
+// Playback buttons of the top bar: Start (or Stop while a source runs), Pause / Resume, and the visible window.
+// Each button has its full name in aria-label and title, because on a phone only the icon is shown.
+export function Controls({ onStart }: { onStart: () => void }) {
   const state = useAppStore((s) => s.status.state)
   const paused = useAppStore((s) => s.paused)
   const windowSeconds = useAppStore((s) => s.windowSeconds)
@@ -18,6 +20,8 @@ export function Controls() {
   function handleStart() {
     const store = useAppStore.getState()
     setPaused(false)
+    onStart()
+    // Both start functions stop the previous session first, so Start also works after an error or an end.
     if (store.sourceKind === 'synthetic') {
       void startSynthetic(store.syntheticSettings)
       return
@@ -32,30 +36,56 @@ export function Controls() {
 
   return (
     <>
-      <SourcePicker disabled={isActive} />
-      <section className="controls" aria-label="Controls">
-        <button type="button" onClick={handleStart} disabled={isActive || !canStart}>
-          Start
+      {isActive ? (
+        <button
+          type="button"
+          className="icon-button"
+          onClick={handleStop}
+          aria-label="Stop"
+          title="Stop"
+        >
+          <StopIcon />
+          <span className="btn-text">Stop</span>
         </button>
-        {/* Pause freezes the display of every panel: the source keeps running. Resume jumps back to live. */}
-        <button type="button" onClick={() => setPaused(!paused)} disabled={state !== 'running'}>
-          {paused ? 'Resume' : 'Pause'}
+      ) : (
+        <button
+          type="button"
+          className="icon-button primary"
+          onClick={handleStart}
+          disabled={!canStart}
+          aria-label="Start"
+          title="Start"
+        >
+          <PlayIcon />
+          <span className="btn-text">Start</span>
         </button>
-        <button type="button" onClick={handleStop} disabled={state === 'idle'}>
-          Stop
+      )}
+      {/* Pause freezes the display of every panel: the source keeps running. Resume jumps back to live. */}
+      {state === 'running' && (
+        <button
+          type="button"
+          // Highlighted while paused, so a frozen plot is never mistaken for a flat signal.
+          className={`icon-button${paused ? ' active' : ''}`}
+          onClick={() => setPaused(!paused)}
+          aria-label={paused ? 'Resume' : 'Pause'}
+          title={paused ? 'Resume (back to live)' : 'Pause the display (acquisition goes on)'}
+        >
+          {paused ? <PlayIcon /> : <PauseIcon />}
+          <span className="btn-text">{paused ? 'Resume' : 'Pause'}</span>
         </button>
-        <label>
-          Window
-          <select
-            value={windowSeconds}
-            onChange={(event) => setWindowSeconds(Number(event.target.value) as WindowSeconds)}
+      )}
+      <div className="segmented" role="group" aria-label="Window" title="Visible window">
+        {WINDOW_CHOICES.map((seconds) => (
+          <button
+            key={seconds}
+            type="button"
+            aria-pressed={windowSeconds === seconds}
+            onClick={() => setWindowSeconds(seconds)}
           >
-            <option value={5}>5 s</option>
-            <option value={10}>10 s</option>
-          </select>
-        </label>
-      </section>
-      <RecordControls />
+            {seconds} s
+          </button>
+        ))}
+      </div>
     </>
   )
 }

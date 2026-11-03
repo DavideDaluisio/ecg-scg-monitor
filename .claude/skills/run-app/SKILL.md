@@ -10,7 +10,7 @@ description: Start the ECG/SCG monitor dev server and check a UI change in the r
 3. Check, in this order:
    - The page loads with no errors in the browser console.
    - Pick a recording (a synthetic one is always available; real ones only if `public/samples/local/` is populated).
-   - Press **Start**: the status badge shows `running` and the trace scrolls.
+   - Press **Start**: the status dot (top right) turns green (`running` in its tooltip) and the trace scrolls.
    - Timing: 10 s on a stopwatch ≈ 10 s of signal on the X axis.
    - **Pause** freezes the plot; **Resume** jumps back to live; **Stop** returns to `idle`.
    - Performance (when the plot changed): Chrome DevTools → Performance, record 5 s, frames stay near 60 fps

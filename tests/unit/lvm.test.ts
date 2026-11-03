@@ -1,9 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { parseLvm } from '../../src/io/lvm.ts'
+import { columnLetter, listLvmColumns, parseLvm } from '../../src/io/lvm.ts'
 import { sampleRateFromTimes } from '../../src/io/sampleRate.ts'
 
 const fixture = readFileSync(new URL('../fixtures/ecg_synthetic.lvm', import.meta.url), 'utf8')
+// Same layout as the newer lab files: ECG in B, SCG in D ("Voltage_1 (Filtered)"), flat channels in F and H.
+const fourChannels = readFileSync(
+  new URL('../fixtures/ecg_scg_synthetic_4ch.lvm', import.meta.url),
+  'utf8',
+)
 
 const HEADER = [
   'LabVIEW Measurement\t',
@@ -78,8 +83,10 @@ describe('parseLvm', () => {
     expect(() => parseLvm(text)).toThrow(/several segments/)
   })
 
-  it('fails on files with several channels', () => {
-    const header = HEADER.map((line) => (line.startsWith('Channels') ? 'Channels\t2\t' : line))
+  it('fails on several channels without column titles (it cannot tell which is which)', () => {
+    const header = HEADER.filter((line) => !line.startsWith('X_Value')).map((line) =>
+      line.startsWith('Channels') ? 'Channels\t2\t' : line,
+    )
     expect(() => parseLvm(lvm(header, ['0\t1\t5', '0.1\t2\t6']))).toThrow(/2 channels/)
   })
 
@@ -90,5 +97,113 @@ describe('parseLvm', () => {
 
   it('fails with fewer than 2 rows', () => {
     expect(() => parseLvm(lvm(HEADER, ['0\t1']))).toThrow(/at least 2 samples/)
+  })
+
+  it('accepts column B (or no column) for a single-signal file', () => {
+    expect(parseLvm(fixture, 'B').samples).toEqual(parseLvm(fixture).samples)
+    expect(() => parseLvm(fixture, 'D')).toThrow(/Column D is not a signal .*B Voltage_0/)
+  })
+})
+
+describe('parseLvm: multi-channel files', () => {
+  const rows = fourChannels.split('\n').filter((line) => /^\d/.test(line))
+  const cell = (row: number, column: number) => Number(rows[row].split('\t')[column])
+
+  it('reads ECG from column B and SCG from column D of the same file', () => {
+    const ecg = parseLvm(fourChannels, 'B')
+    const scg = parseLvm(fourChannels, 'D')
+    expect(ecg.fs).toBe(3000)
+    expect(scg.fs).toBe(3000)
+    expect(ecg.samples).toHaveLength(6000)
+    expect(scg.samples).toHaveLength(6000)
+    for (const row of [0, 1234, 5999]) {
+      expect(ecg.samples[row]).toBe(Math.fround(cell(row, 1)))
+      expect(scg.samples[row]).toBe(Math.fround(cell(row, 3)))
+    }
+    expect(ecg.samples[0]).toBeCloseTo(1.6, 6) // ECG DC offset, not the SCG or a flat channel
+  })
+
+  it('reads the time of a signal from the X_Value column on its left', () => {
+    // Make the time column of D (column C) run 3 times slower: only D must change fs.
+    const changed = fourChannels
+      .split('\n')
+      .map((line) => {
+        if (!/^\d/.test(line)) return line
+        const columns = line.split('\t')
+        columns[2] = (Number(columns[0]) * 3).toFixed(6)
+        return columns.join('\t')
+      })
+      .join('\n')
+    expect(parseLvm(changed, 'B').fs).toBe(3000)
+    expect(parseLvm(changed, 'D').fs).toBe(1000)
+  })
+
+  it('also reads the layout with one shared time column (X_Columns One)', () => {
+    const header = HEADER.map((line) =>
+      line.startsWith('X_Value') ? 'X_Value\tVoltage_0\tVoltage_1\tComment' : line,
+    )
+    const text = lvm(header, ['0\t1\t10', '0.001\t2\t20', '0.002\t3\t30'])
+    expect(Array.from(parseLvm(text, 'C').samples)).toEqual([10, 20, 30])
+    expect(parseLvm(text, 'C').fs).toBe(1000)
+  })
+
+  it('asks for a column when the file has several signals, and lists them', () => {
+    expect(() => parseLvm(fourChannels)).toThrow(
+      'This LVM file has 4 signals (B Voltage_0, D Voltage_1 (Filtered), F Voltage_2, H Voltage_3): ' +
+        'choose a column',
+    )
+  })
+
+  it('rejects a time column, a missing column or a lowercase letter', () => {
+    expect(() => parseLvm(fourChannels, 'A')).toThrow(/Column A is not a signal/)
+    expect(() => parseLvm(fourChannels, 'C')).toThrow(/Column C is not a signal/)
+    expect(() => parseLvm(fourChannels, 'Z')).toThrow(/Column Z is not a signal/)
+    expect(() => parseLvm(fourChannels, 'd')).toThrow(/Column d is not a signal/)
+  })
+
+  it('names the line and the columns of a malformed row', () => {
+    const broken = fourChannels.replace(/\n0\.000333\t[^\n]*/, '\n0.000333\t1.6\t0.000333')
+    expect(() => parseLvm(broken, 'D')).toThrow(
+      /LVM line 25: expected a time in column C and a value in column D/,
+    )
+  })
+})
+
+describe('listLvmColumns', () => {
+  it('lists the signal columns with their spreadsheet letter', () => {
+    expect(listLvmColumns(fourChannels)).toEqual([
+      { letter: 'B', name: 'Voltage_0', index: 1 },
+      { letter: 'D', name: 'Voltage_1 (Filtered)', index: 3 },
+      { letter: 'F', name: 'Voltage_2', index: 5 },
+      { letter: 'H', name: 'Voltage_3', index: 7 },
+    ])
+    expect(listLvmColumns(fixture)).toEqual([{ letter: 'B', name: 'Voltage_0', index: 1 }])
+  })
+
+  it('needs only the header (the UI reads the first 64 kB of a large file)', () => {
+    expect(listLvmColumns(fourChannels.slice(0, 2000))).toHaveLength(4)
+  })
+
+  it('returns an empty list for a file that is not an LVM or has no column line', () => {
+    expect(listLvmColumns('time_s,scg_V\n0,1\n')).toEqual([])
+    expect(listLvmColumns(lvm(HEADER.slice(0, -1), ['0\t1', '1\t2']))).toEqual([])
+  })
+})
+
+describe('columnLetter', () => {
+  it('turns a 0-based index into a spreadsheet letter', () => {
+    const indices = [0, 1, 3, 25, 26, 27, 51, 52, 701, 702]
+    expect(indices.map(columnLetter)).toEqual([
+      'A',
+      'B',
+      'D',
+      'Z',
+      'AA',
+      'AB',
+      'AZ',
+      'BA',
+      'ZZ',
+      'AAA',
+    ])
   })
 })

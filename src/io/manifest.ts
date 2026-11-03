@@ -5,6 +5,9 @@ import type { ChannelId } from '../core/types.ts'
 export interface RecordingEntry {
   id: string // neutral id, e.g. "ecg_subject01"
   file: string // relative to public/samples/
+  // Spreadsheet letter of the signal in a multi-channel .lvm file (e.g. "D"), null for single-signal files.
+  // Two entries (ECG and SCG) may point to the same file with different columns.
+  column: string | null
   channel: ChannelId
   fs: number // informative only: the parser computes fs from the file itself
   samples: number
@@ -27,7 +30,8 @@ export function parseManifest(json: unknown, isLocal: boolean): RecordingEntry[]
       (entry.channel === 'ecg' || entry.channel === 'scg') &&
       typeof entry.fs === 'number' &&
       typeof entry.samples === 'number' &&
-      typeof entry.durationS === 'number'
+      typeof entry.durationS === 'number' &&
+      (entry.column === undefined || entry.column === null || isColumnLetter(entry.column))
     if (!isValid) {
       console.warn('Skipping malformed manifest entry', item)
       continue
@@ -35,6 +39,7 @@ export function parseManifest(json: unknown, isLocal: boolean): RecordingEntry[]
     entries.push({
       id: entry.id!,
       file: entry.file!,
+      column: entry.column ?? null,
       channel: entry.channel!,
       fs: entry.fs!,
       samples: entry.samples!,
@@ -44,6 +49,11 @@ export function parseManifest(json: unknown, isLocal: boolean): RecordingEntry[]
     })
   }
   return entries
+}
+
+// Uppercase spreadsheet letters only ("B", "D", "AA"), as the LVM parser expects them.
+function isColumnLetter(value: unknown): boolean {
+  return typeof value === 'string' && /^[A-Z]+$/.test(value)
 }
 
 /** True when the manifest says that the two recordings were made at the same time (in either direction). */

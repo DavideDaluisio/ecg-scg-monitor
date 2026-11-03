@@ -95,6 +95,37 @@ writeFileSync(new URL('ecg_synthetic.lvm', outDir), [...lvmHeader, ...ecgRows].j
 writeFileSync(new URL('scg_synthetic.csv', outDir), scgRows.join('\n') + '\n')
 console.log(`Wrote ${N} ECG and ${N} SCG samples at ${FS} Hz to tests/fixtures/`)
 
+// 4-channel LVM with the layout of the newer lab files: each signal has its own time column (X_Columns Multi),
+// ECG in column B, SCG in column D ("Voltage_1 (Filtered)"), two flat unused channels in F and H.
+const perChannel = (text) => `${text}\t\t`.repeat(4).slice(0, -1) // "<text>, tab, tab, <text>, …, <text>, tab"
+const lvm4Header = [
+  ...lvmHeader.slice(0, 13), // file header, same as above
+  'Channels\t4\t\t\t\t\t\t\t',
+  `Samples${'\t1000\t'.repeat(4)}`, // deliberately wrong, like the lab file
+  `Date\t${perChannel('2000/01/01')}`,
+  `Time\t${perChannel('00:00:00')}`,
+  `Y_Unit_Label\t${perChannel('Volts')}`,
+  `X_Dimension\t${perChannel('Time')}`,
+  `X0\t${perChannel('0.0000000000000000E+0')}`,
+  `Delta_X\t${perChannel('0.000333')}`,
+  '***End_of_Header***\t\t\t\t\t\t\t\t',
+  'X_Value\tVoltage_0\tX_Value\tVoltage_1 (Filtered)\tX_Value\tVoltage_2\tX_Value\tVoltage_3\tComment',
+]
+const lvm4Rows = []
+for (let i = 0; i < N; i++) {
+  const t = time(i)
+  const ecg = ecgAt(i / FS).toFixed(6)
+  const scg = scgAt(i / FS).toFixed(6)
+  lvm4Rows.push(`${t}\t${ecg}\t${t}\t${scg}\t${t}\t2.326000\t${t}\t2.325500`)
+}
+writeFileSync(
+  new URL('ecg_scg_synthetic_4ch.lvm', outDir),
+  [...lvm4Header, ...lvm4Rows].join('\n') + '\n',
+)
+console.log(
+  `Wrote ${N} rows of 4 channels (ECG in B, SCG in D) to tests/fixtures/ecg_scg_synthetic_4ch.lvm`,
+)
+
 // Public demos: the only recordings on the deployed site (synthetic, safe to publish).
 const demoN = FS * DEMO_DURATION_S
 const demoRows = []

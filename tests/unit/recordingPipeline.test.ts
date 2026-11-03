@@ -12,6 +12,7 @@ import { ecgAt, scgAt } from '../../src/sources/syntheticSignals.ts'
 
 const HEART_RATE_BPM = 72
 const R_TO_AO_S = 0.08
+const BOM = String.fromCharCode(0xfeff) // byte-order mark at the start of every export
 
 interface CsvTable {
   fs: number
@@ -19,14 +20,18 @@ interface CsvTable {
   columns: Map<string, string[]> // column name → cells, one per row
 }
 
-// Reads one exported CSV: `# key=value` header lines, then the column line and the rows.
+// Reads one exported CSV: a byte-order mark, `# Key: value` header lines, then the column line and the rows.
 function readCsv(text: string): CsvTable {
-  const lines = text.split('\n').filter((line) => line !== '')
+  expect(text.startsWith(BOM)).toBe(true)
+  const lines = text
+    .slice(1)
+    .split('\n')
+    .filter((line) => line !== '')
   const header = new Map<string, string>()
   let i = 0
   for (; lines[i].startsWith('#'); i++) {
-    const [key, ...rest] = lines[i].slice(2).split('=')
-    header.set(key, rest.join('='))
+    const [key, ...rest] = lines[i].slice(2).split(': ')
+    header.set(key, rest.join(': '))
   }
   const names = lines[i].split(',')
   const columns = new Map(names.map((name) => [name, [] as string[]]))
@@ -35,7 +40,7 @@ function readCsv(text: string): CsvTable {
   }
   const indices = columns.get('sample_index')!.map(Number)
   indices.forEach((index, row) => expect(index).toBe(indices[0] + row)) // contiguous, no row skipped
-  return { fs: Number(header.get('fs')), firstIndex: indices[0], columns }
+  return { fs: Number(header.get('Sampling rate (Hz)')), firstIndex: indices[0], columns }
 }
 
 // Records `recordS` seconds of synthetic ECG + SCG starting `skipS` s after Start, with one marker in the middle.
@@ -136,6 +141,7 @@ describe('recording → CSV export → read back (M4)', () => {
     expect(files).toHaveLength(1)
     const [table] = files
     expect(table.firstIndex).toBe(6000) // recording started 2 s after Start: the index is never re-based
+    expect(table.columns.get('time_s')![0]).toBe('0.000000') // ...but the time starts at 0 at Record
     expect(table.columns.get('ecg_V')).toHaveLength(60 * 3000)
     expect(countWrongSamples(table, 'ecg_V', ecgModel)).toBe(0)
     expect(countWrongSamples(table, 'scg_V', scgModel)).toBe(0)
@@ -150,6 +156,8 @@ describe('recording → CSV export → read back (M4)', () => {
     const [ecg, scg] = files
     expect(ecg.firstIndex).toBe(500)
     expect(scg.firstIndex).toBe(3000) // the same instant (1 s) on both clocks
+    expect(ecg.columns.get('time_s')![0]).toBe('0.000000') // and the same zero in both files
+    expect(scg.columns.get('time_s')![0]).toBe('0.000000')
     expect(countWrongSamples(ecg, 'ecg_V', ecgModel)).toBe(0)
     expect(countWrongSamples(scg, 'scg_V', scgModel)).toBe(0)
     const markerIndex = (table: CsvTable) =>

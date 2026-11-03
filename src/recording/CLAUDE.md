@@ -20,6 +20,10 @@ or when the source ends or fails). Layout of the database and of the export: `do
 - **Markers** exist only while recording (UI rule). A marker is `{ channel, sampleIndex, label }` on the reference
   channel (`referenceChannel()`: highest fs, ECG if equal), placed on the newest sample received when clicked,
   never before the recording start. Labels are cleaned (`cleanMarkerLabel()`): no line breaks.
+- **Renaming a marker** changes only its `label` (index in `session.markers` = its number in the lists). While
+  recording it must go through `Recorder.renameMarker()`: every chunk rewrites the stored session from the
+  recorder's copy, so a label changed directly in IndexedDB would be overwritten. After the recording,
+  `renameSavedMarker()` (`db.ts`) reads and writes the session in one transaction. Markers are never removed.
 - **Privacy:** saved sessions stay in this browser's IndexedDB. Names are date and time only
   (`savedSessionName()`), never a person's name.
 - `db.ts` functions take the database as an argument: tests open their own with `fake-indexeddb`
@@ -29,11 +33,11 @@ or when the source ends or fails). Layout of the database and of the export: `do
 
 ## Files
 
-| File             | What it does                                                                           |
-| ---------------- | -------------------------------------------------------------------------------------- |
-| `types.ts`       | `Marker`, `SavedChannel`, `SavedSession`, `SampleChunk`                                |
-| `chunker.ts`     | `ChannelChunker`: cuts one channel into fixed-length chunks (pure, tested)             |
-| `recorder.ts`    | `Recorder`: one chunker per channel, writes chunks and markers to IndexedDB            |
-| `db.ts`          | `idb` schema and functions: create, save chunk, list, load channel, delete             |
-| `markers.ts`     | `MARKER_PRESETS` (placeholder, Q8), `referenceChannel()`, `cleanMarkerLabel()`         |
-| `sessionName.ts` | `savedSessionName()`: `session_YYYY-MM-DD_HH-MM-SS` (local time), also the export name |
+| File             | What it does                                                                                                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `types.ts`       | `Marker`, `SavedChannel`, `SavedSession`, `SampleChunk`                                                                                                                                                                         |
+| `chunker.ts`     | `ChannelChunker`: cuts one channel into fixed-length chunks (pure, tested)                                                                                                                                                      |
+| `recorder.ts`    | `Recorder`: one chunker per channel, writes chunks and markers (add, rename) to IndexedDB                                                                                                                                       |
+| `db.ts`          | `idb` schema and functions: create, save chunk, list, load channel, rename a marker, delete                                                                                                                                     |
+| `markers.ts`     | `MARKER_PRESETS` (placeholder, Q8), `referenceChannel()`, `cleanMarkerLabel()`, time since Record (`recordingZeroSeconds()`, `markerRecordingTimeS()`), user marker types (`addCustomMarkerType()`, `removeCustomMarkerType()`) |
+| `sessionName.ts` | `savedSessionName()`: `session_YYYY-MM-DD_HH-MM-SS` (local time), also the export name                                                                                                                                          |

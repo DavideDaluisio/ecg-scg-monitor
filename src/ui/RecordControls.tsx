@@ -1,69 +1,47 @@
 import { useEffect, useState } from 'react'
-import { MARKER_PRESETS } from '../recording/markers.ts'
-import {
-  addMarker,
-  getRecordingElapsedSeconds,
-  startRecording,
-  stopRecording,
-} from '../state/session.ts'
+import { getRecordingElapsedSeconds, startRecording, stopRecording } from '../state/session.ts'
 import { useAppStore } from '../state/store.ts'
 import { formatDuration } from './formatDuration.ts'
+import { RecordIcon, StopIcon } from './icons.tsx'
 
-// Record / Stop recording, and markers (only while recording, so every marker on screen is saved).
+// Record / Stop recording, with the time recorded so far. The markers appear under the bar while recording
+// (MarkerBar), so every marker on screen is saved.
 export function RecordControls() {
   const state = useAppStore((s) => s.status.state)
-  const recordingName = useAppStore((s) => s.recordingName)
-  const lastMarker = useAppStore((s) => s.lastMarker)
-  const [label, setLabel] = useState('')
-  const isRecording = recordingName !== null
+  const isRecording = useAppStore((s) => s.recordingName !== null)
+
+  if (isRecording) {
+    return (
+      <>
+        <button
+          type="button"
+          // Red like Rec: on a phone only the icon shows, and it must not look like the Stop of the source.
+          className="icon-button record-button"
+          onClick={() => void stopRecording()}
+          aria-label="Stop recording"
+          title="Stop recording"
+        >
+          <StopIcon />
+          <span className="btn-text">Stop rec</span>
+        </button>
+        <RecordingTimer />
+      </>
+    )
+  }
 
   return (
-    <section className="controls" aria-label="Recording">
-      {isRecording ? (
-        <button type="button" onClick={() => void stopRecording()}>
-          <span aria-hidden="true">■</span> Stop recording
-        </button>
-      ) : (
-        // Recording keeps running while the display is paused: Pause only freezes the plot.
-        <button type="button" onClick={startRecording} disabled={state !== 'running'}>
-          <span aria-hidden="true" className="record-dot">
-            ●
-          </span>{' '}
-          Record
-        </button>
-      )}
-      {isRecording && <RecordingTimer />}
-      <label>
-        Marker
-        {/* A preset from the list or any text. */}
-        <input
-          type="text"
-          className="text-input"
-          list="marker-presets"
-          placeholder="label"
-          value={label}
-          disabled={!isRecording}
-          onChange={(event) => setLabel(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') addMarker(label)
-          }}
-        />
-      </label>
-      <datalist id="marker-presets">
-        {MARKER_PRESETS.map((preset) => (
-          <option key={preset} value={preset} />
-        ))}
-      </datalist>
-      <button type="button" onClick={() => addMarker(label)} disabled={!isRecording}>
-        Add marker
-      </button>
-      {lastMarker !== null && (
-        <span className="marker-feedback" data-testid="last-marker">
-          Marker "{lastMarker.label}" at {lastMarker.timeS.toFixed(4)} s (sample{' '}
-          {lastMarker.sampleIndex})
-        </span>
-      )}
-    </section>
+    // Recording keeps running while the display is paused: Pause only freezes the plot.
+    <button
+      type="button"
+      className="icon-button record-button"
+      onClick={startRecording}
+      disabled={state !== 'running'}
+      aria-label="Record"
+      title="Record (save the signal in this browser)"
+    >
+      <RecordIcon />
+      <span className="btn-text">Rec</span>
+    </button>
   )
 }
 
@@ -77,8 +55,9 @@ function RecordingTimer() {
   }, [])
 
   return (
-    <span className="rec-badge" data-testid="rec-timer">
-      ● REC {formatDuration(seconds)}
+    <span className="rec-badge" data-testid="rec-timer" title="Recorded so far">
+      <span className="rec-dot" aria-hidden="true" />
+      {formatDuration(seconds)}
     </span>
   )
 }
