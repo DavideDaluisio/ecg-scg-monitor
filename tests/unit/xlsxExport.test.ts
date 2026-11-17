@@ -4,7 +4,7 @@ import { unzipSync, strFromU8 } from 'fflate'
 import { describe, expect, it } from 'vitest'
 import * as XLSX from 'xlsx'
 import type { ChannelId } from '../../src/core/types.ts'
-import type { ExportChannel } from '../../src/io/exportShared.ts'
+import { localDateTime, type ExportChannel } from '../../src/io/exportShared.ts'
 import {
   buildXlsxExport,
   minutesSeconds,
@@ -118,6 +118,12 @@ describe('buildXlsxExport', () => {
     const info = new Map(rows('Info').map((row) => [row[0], row[1]]))
     expect(rows('Info')[0][0]).toBe('ECG/SCG Monitor export')
     expect(info.get('Session')).toBe('session_2026-10-08_15-04-05')
+    // The wall-clock date and time of the recording (local time of the computer that exports).
+    expect(info.get('Recorded')).toBe(localDateTime('2026-10-08T13:04:05.000Z'))
+    expect(info.get('Recorded')).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:05 local time \(UTC[+-]\d{2}:\d{2}\)$/)
+    expect(info.get('Acquisition started')).toBe(
+      `${localDateTime('2026-10-08T13:04:00.000Z')} (= sample index 0)`,
+    )
     expect(info.get('Duration')).toBe('0.300 s (00:00.300)')
     expect(info.get('Channels')).toBe('ECG 10 Hz · SCG 10 Hz')
     expect(info.get('Source details')).toBe('Synthetic ECG + SCG · 72 bpm')

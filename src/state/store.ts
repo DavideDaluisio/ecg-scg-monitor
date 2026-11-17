@@ -60,6 +60,8 @@ interface AppState {
   notSimultaneous: boolean
   paused: boolean // display only: acquisition keeps running
   windowSeconds: WindowSeconds
+  showPqrst: boolean // the P, Q, R, S, T symbols on the ECG panel (display only)
+  showAo: boolean // the AO symbols on the SCG panel (display only)
   // Name of the saved session being recorded, null when not recording.
   recordingName: string | null
   // Markers of the recording in progress, in the order they were added (empty when not recording).
@@ -81,6 +83,8 @@ interface AppState {
   setNotSimultaneous: (notSimultaneous: boolean) => void
   setPaused: (paused: boolean) => void
   setWindowSeconds: (seconds: WindowSeconds) => void
+  setShowPqrst: (show: boolean) => void
+  setShowAo: (show: boolean) => void
   setRecordingName: (name: string | null) => void
   setRecordingMarkers: (markers: MarkerRow[]) => void
   addCustomMarkerType: (label: string) => void
@@ -103,6 +107,8 @@ export const useAppStore = create<AppState>()((set) => ({
   notSimultaneous: false,
   paused: false,
   windowSeconds: 10,
+  showPqrst: true,
+  showAo: true,
   recordingName: null,
   recordingMarkers: [],
   customMarkerTypes: loadCustomMarkerTypes(),
@@ -137,6 +143,8 @@ export const useAppStore = create<AppState>()((set) => ({
   setNotSimultaneous: (notSimultaneous) => set({ notSimultaneous }),
   setPaused: (paused) => set({ paused }),
   setWindowSeconds: (windowSeconds) => set({ windowSeconds }),
+  setShowPqrst: (showPqrst) => set({ showPqrst }),
+  setShowAo: (showAo) => set({ showAo }),
   setRecordingName: (recordingName) => set({ recordingName }),
   setRecordingMarkers: (recordingMarkers) => set({ recordingMarkers }),
   addCustomMarkerType: (label) =>

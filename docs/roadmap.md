@@ -63,6 +63,28 @@ Order requested by the supervisor: ECG first, then SCG, then both together. Stat
       export → delete)
 - [x] 5-min exports (ECG 3000 + SCG 3000 Hz, ECG 500 + SCG 3000 Hz) re-read in Python: samples and markers OK
 
+## Extra – PQRST markers on the ECG (requested)
+
+Display only: nothing changes in recordings or exports.
+
+- [x] `src/analysis/`: streaming QRS detector (simplified Pan–Tompkins) + P, Q, R, S, T search on the raw samples
+      (+ tests on synthetic ECGs: every beat found, R ±1 sample, P/Q/S/T ±5 ms)
+- [x] Dot + letter on each wave of the ECG panel, "Show PQRST" checkbox in the ECG panel header (works on a paused
+      plot) + e2e
+- [x] Checked on the local lab recordings (`ecg_subject01`, `ecg_subject02`)
+- [ ] Q10: confirm that the QRS of the patch's ECG lead is positive
+
+## Extra – AO peak on the SCG (requested)
+
+Display only, and only when the session's ECG and SCG are simultaneous (the AO is searched after each R peak).
+
+- [x] `src/analysis/`: `findAo` (highest raw SCG sample in [R + 40 ms, R + min(250 ms, 0.45 × RR)], 10 %-of-range
+      prominence rule) + `AoTracker` fed with the R peaks of the `PqrstTracker` (+ tests: AO ±1 sample on synthetic
+      SCGs, ECG and SCG at different fs)
+- [x] Dot + "AO" on the SCG panel, "Show AO" checkbox in the SCG panel header (disabled without a simultaneous ECG) + e2e
+- [x] Checked on the local simultaneous recording `ecg_scg_subject02` (AO ≈ 125 ms after R on ≈ 90 % of the beats)
+- [ ] Q11: confirm that AO is a positive peak on the patch's SCG axis
+
 ## M5 – BLE
 
 - [ ] Protocol agreed with Arsh (`docs/ble-protocol.md` v1)

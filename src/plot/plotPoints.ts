@@ -4,7 +4,7 @@ import type { RingBuffer } from '../core/ringBuffer.ts'
 import { secondsToSampleIndex } from '../core/time.ts'
 import { decimateMinMax } from './decimate.ts'
 
-const VOLTS_TO_MILLIVOLTS = 1000 // samples are stored in volts, shown in mV
+export const VOLTS_TO_MILLIVOLTS = 1000 // samples are stored in volts, shown in mV
 
 /**
  * Start (s) of the visible window, the same for every panel (shared X axis).

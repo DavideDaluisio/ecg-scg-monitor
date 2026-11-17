@@ -11,6 +11,9 @@ Until hardware is available, the app runs on **simulated data** (file replay + s
 Current milestone and checklist: `docs/roadmap.md`. Work on **one milestone at a time**, in order:
 M0 scaffold → M1 ECG live → M2 SCG live → M3 ECG + SCG together → M4 recording, markers, export → M5 BLE.
 Out of scope for now: DSP filters, heart rate, PEP/LVET. Do not add them unless asked.
+Asked for and done: P, Q, R, S, T symbols on the ECG and the AO peak on the SCG (`src/analysis/`, display only; its
+filters stay inside the detector, the signal shown, recorded and exported is never filtered; the AO needs a
+simultaneous ECG). No R→AO (PEP) value is computed.
 
 ## Stack
 
@@ -37,6 +40,7 @@ Runs in Chrome (desktop and Android) because M5 needs Web Bluetooth. iPhone is n
 - `src/io/` – parsers (LVM, CSV, XLSX) and exports (Excel `.xlsx`, CSV).
 - `src/sources/` – `ReplaySource`, `SyntheticSource`, later `BleSource`.
 - `src/plot/` – uPlot wrapper, min/max decimation, render loop.
+- `src/analysis/` – ECG P, Q, R, S, T and SCG AO detection for the plot (QRS detector, wave search), display only.
 - `src/recording/` – IndexedDB recorder, saved sessions and markers (M4).
 - `src/ble/` – Web Bluetooth connection and packet decoder (M5).
 - `src/state/`, `src/ui/` – zustand store and React components.

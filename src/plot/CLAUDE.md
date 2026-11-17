@@ -16,6 +16,11 @@ Performance is the main risk of this app: 2 channels × 3000 Hz × 10 s window =
   `tests/unit/alignment.test.ts`: keep the drawing logic there, not inside `LivePlot`, so the test checks what is drawn.
 - The uPlot cursor is synced across panels (same `cursor.sync.key`); drag-to-zoom stays off, because `draw()` sets the
   X range every frame. The readout is written to the DOM only when its text changes.
+- **P, Q, R, S, T symbols** (ECG panel only) are drawn by a uPlot `draw` hook from the session's beats
+  (`getEcgBeats()`, detected in `src/analysis/`): a dot on the wave's sample + its letter. Toggling them calls
+  `redraw(false)`, so it works while paused; a paused plot skips the beats found after its last `draw()`.
+- **AO symbols** (SCG panel only) work the same way, from `getScgAoPoints()`: a dot on the AO sample + "AO" above it.
+  Each panel has one kind of symbol, shown or hidden with `setSymbolsVisible()` (CSS color `--symbol`).
 - Y axis autoscales on the visible window (min/max with ~10 % padding, smoothed so it does not jump each frame).
 - When the display is paused, the loop stops updating but acquisition continues.
 - Target: steady 60 fps on a mid-range laptop and Android phone. Ask the `perf-auditor` agent after changes here.

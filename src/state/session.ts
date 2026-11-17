@@ -1,5 +1,8 @@
 // The running session: one data source and one ring buffer per channel, plus the recorder while recording.
 // Plain module (no React): the UI calls these functions, the plot reads the buffers every frame.
+import { AoTracker } from '../analysis/aoTracker.ts'
+import type { PqrstBeat, WavePoint } from '../analysis/pqrstPoints.ts'
+import { PqrstTracker } from '../analysis/pqrstTracker.ts'
 import { RingBuffer } from '../core/ringBuffer.ts'
 import type { ChannelId, DataSource } from '../core/types.ts'
 import { parseRecording } from '../io/parseRecording.ts'
@@ -21,6 +24,8 @@ import {
 
 const BUFFER_SECONDS = 30
 const DEFAULT_MARKER_LABEL = 'marker' // when the label field is empty
+const NO_BEATS: readonly PqrstBeat[] = []
+const NO_POINTS: readonly WavePoint[] = []
 
 export interface ChannelBuffer {
   buffer: RingBuffer
@@ -55,6 +60,10 @@ const plotMarkers: PlotMarker[] = []
 let plotMarkersVersion = 0
 // The plot markers of the recording in progress, in the order of the saved session's markers (for renaming).
 let recordingPlotMarkers: PlotMarker[] = []
+// P, Q, R, S, T detection on the ECG of the session (display only). Kept after Stop like the last frame.
+let ecgPqrst: PqrstTracker | null = null
+// AO detection on the SCG (display only), only when the session's ECG and SCG are simultaneous. Kept after Stop.
+let scgAo: AoTracker | null = null
 
 export function getChannelBuffer(channel: ChannelId): ChannelBuffer | null {
   return buffers.get(channel) ?? null
@@ -76,6 +85,19 @@ export function getPlotMarkers(): readonly PlotMarker[] {
 
 export function getPlotMarkersVersion(): number {
   return plotMarkersVersion
+}
+
+/** Heartbeats detected on the ECG of the session, oldest first (empty when the session has no ECG). */
+export function getEcgBeats(): readonly PqrstBeat[] {
+  return ecgPqrst?.beats ?? NO_BEATS
+}
+
+/**
+ * AO peaks detected on the SCG of the session, oldest first. Empty when the session has no SCG, no ECG, or an ECG
+ * that was not recorded at the same time as the SCG.
+ */
+export function getScgAoPoints(): readonly WavePoint[] {
+  return scgAo?.points ?? NO_POINTS
 }
 
 /** Seconds of signal recorded so far (0 when not recording). */
@@ -272,11 +294,30 @@ async function startSession(prepare: () => Promise<PreparedSource>): Promise<voi
     }
     plotMarkers.length = 0
     plotMarkersVersion++
+    const ecgBuffer = buffers.get('ecg')
+    const scgBuffer = buffers.get('scg')
+    // The AO is searched after each R peak of the ECG, so it needs an ECG recorded at the same time as the SCG:
+    // the R peaks of an unrelated ECG file would put the AO symbols anywhere.
+    const ao =
+      ecgBuffer !== undefined && scgBuffer !== undefined && !next.notSimultaneous
+        ? new AoTracker(scgBuffer.buffer, scgBuffer.fs, ecgBuffer.fs)
+        : null
+    scgAo = ao
+    ecgPqrst =
+      ecgBuffer === undefined
+        ? null
+        : new PqrstTracker(ecgBuffer.buffer, ecgBuffer.fs, (beat) =>
+            ao?.addRPeak(beat.r.sampleIndex),
+          )
     store.setSessionChannels(newSource.channels.map((channel) => channel.id))
     store.setNotSimultaneous(next.notSimultaneous)
     unsubscribe = [
       newSource.onBlock((block) => {
         buffers.get(block.channel)?.buffer.push(block.firstSampleIndex, block.samples)
+        // After the push: the trackers read the beat's samples back from the ring buffers. The AO tracker runs
+        // after every block, because it needs both the R peak (ECG) and the samples of its window (SCG).
+        if (block.channel === 'ecg') ecgPqrst?.push(block)
+        scgAo?.update()
         recorder?.push(block)
       }),
       newSource.onStatus((status) => {

@@ -97,6 +97,12 @@ test('replays the synthetic SCG demo', async ({ page }) => {
   await expect(page.getByTestId('plot-scg').locator('canvas')).toBeVisible()
   await expect(page.getByTestId('placeholder-ecg')).toHaveText('No ECG signal in this recording')
   await expect(page.getByTestId('plot-ecg')).toHaveCount(0)
+  // The AO is searched after the R peaks of a simultaneous ECG: without an ECG the checkbox is shown but disabled.
+  const showAo = page.getByRole('region', { name: 'SCG panel' }).getByRole('checkbox', {
+    name: 'Show AO',
+  })
+  await expect(showAo).toBeDisabled()
+  await expect(showAo).not.toBeChecked()
   await page.waitForTimeout(1000) // let the trace scroll for a moment
 
   await page.getByRole('button', { name: 'Stop' }).click()
@@ -232,6 +238,83 @@ test('synthetic ECG + SCG: synchronized pause and cursor', async ({ page }) => {
   await page.getByRole('button', { name: 'Resume' }).click()
   await page.getByRole('button', { name: 'Stop' }).click()
   await expect(page.getByTestId('status-badge')).toHaveText('idle')
+  expect(errors).toEqual([])
+})
+
+// P, Q, R, S, T symbols on the ECG (display only): the PQRST checkbox of the ECG panel hides and shows them at once,
+// even on a paused plot, which keeps showing the same frame.
+test('PQRST symbols on the ECG: hide and show while paused', async ({ page }) => {
+  const errors = watchErrors(page)
+
+  await page.goto('./')
+  await openSourcePanel(page)
+  await page.getByRole('combobox', { name: 'Source' }).selectOption('synthetic')
+  const pqrst = page.getByRole('region', { name: 'ECG panel' }).getByRole('checkbox', {
+    name: 'Show PQRST',
+  })
+  await expect(pqrst).toHaveCount(0) // only when the session has an ECG
+
+  await page.getByRole('button', { name: 'Start' }).click()
+  await expect(page.getByTestId('status-badge')).toHaveText('running')
+  await expect(pqrst).toBeChecked()
+  // The detector learns for 2 s, then each beat's symbols appear ~0.6 s after its R peak.
+  await page.waitForTimeout(4000)
+  await page.getByRole('button', { name: 'Pause' }).click()
+  await page.waitForTimeout(100) // the frame that was already being drawn
+  const ecgCanvas = page.getByTestId('plot-ecg').locator('canvas')
+  const withSymbols = await ecgCanvas.screenshot()
+
+  await pqrst.uncheck()
+  await expect(pqrst).not.toBeChecked()
+  await page.waitForTimeout(100)
+  expect((await ecgCanvas.screenshot()).equals(withSymbols)).toBe(false)
+
+  await pqrst.check()
+  await expect(pqrst).toBeChecked()
+  await page.waitForTimeout(100)
+  expect((await ecgCanvas.screenshot()).equals(withSymbols)).toBe(true)
+
+  await page.getByRole('button', { name: 'Resume' }).click()
+  await page.getByRole('button', { name: 'Stop' }).click()
+  expect(errors).toEqual([])
+})
+
+// AO symbols on the SCG (display only): with the synthetic source (ECG and SCG generated together) the AO checkbox
+// of the SCG panel is on, and hides and shows the symbols at once, even on a paused plot.
+test('AO symbols on the SCG: hide and show while paused', async ({ page }) => {
+  const errors = watchErrors(page)
+
+  await page.goto('./')
+  await openSourcePanel(page)
+  await page.getByRole('combobox', { name: 'Source' }).selectOption('synthetic')
+  const showAo = page.getByRole('region', { name: 'SCG panel' }).getByRole('checkbox', {
+    name: 'Show AO',
+  })
+  await expect(showAo).toHaveCount(0) // only when the session has an SCG
+
+  await page.getByRole('button', { name: 'Start' }).click()
+  await expect(page.getByTestId('status-badge')).toHaveText('running')
+  await expect(showAo).toBeEnabled()
+  await expect(showAo).toBeChecked()
+  // The R peaks come after the 2-s learning phase of the ECG detector, each ~0.6 s after it happens.
+  await page.waitForTimeout(4000)
+  await page.getByRole('button', { name: 'Pause' }).click()
+  await page.waitForTimeout(100) // the frame that was already being drawn
+  const scgCanvas = page.getByTestId('plot-scg').locator('canvas')
+  const withSymbols = await scgCanvas.screenshot()
+
+  await showAo.uncheck()
+  await expect(showAo).not.toBeChecked()
+  await page.waitForTimeout(100)
+  expect((await scgCanvas.screenshot()).equals(withSymbols)).toBe(false)
+
+  await showAo.check()
+  await expect(showAo).toBeChecked()
+  await page.waitForTimeout(100)
+  expect((await scgCanvas.screenshot()).equals(withSymbols)).toBe(true)
+
+  await page.getByRole('button', { name: 'Resume' }).click()
+  await page.getByRole('button', { name: 'Stop' }).click()
   expect(errors).toEqual([])
 })
 
